@@ -1,0 +1,25 @@
+== Changelog ==
+
+= 1.0.2 =
+* Added DPW_RUI_Admin_Core class for core functionality
+* Renamed DPW_RUI_General_Settings to DPW_RUI_Settings_General
+* Added improved validation and sanitization
+* Added pagination helpers
+* Added date formatting for Indonesian format
+* Added permission checking helpers
+* Fixed class name conflicts
+* Improved Bootstrap integration
+* Added proper error handling
+* Added admin notice handling
+
+= 1.0.1 = 
+* Format nomor anggota otomatis [tanggal][bulan][tahun]-xxxxx
+* Tambah kolom created_by untuk akses edit_own  
+* Fitur pencarian anggota
+* Pagination per 10 data
+
+= 1.0.0 =
+* Initial release
+* Fitur dasar management anggota RUI
+* Role management (Admin, Operator, Member)
+* Settings page dengan 3 tab (Umum, Layanan, Role Management)
