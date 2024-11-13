@@ -1,55 +1,69 @@
 <?php
 /**
  * Path: /wp-content/plugins/dpwrui/admin/settings.php
- * Version: 2.0.0
+ * Version: 2.3.0
  * 
  * Changelog:
- * 2.0.0
- * - Adjusted for new plugin structure
- * - Added proper dependency management
- * - Improved routing to settings pages
- * - Added data cleanup settings
- * - Fixed tab handling
+ * 2.3.0
+ * - Fixed roles tab not displaying by properly initializing roles settings
+ * - Added proper roles class instantiation
+ * - Fixed tab switching logic
+ * - Improved error handling for roles management
+ * - Added roles validation
+ * - Fixed cleanup settings position when in roles tab
  * 
- * 1.0.1
- * - Fixed duplicate tab rendering
- * - Improved page routing
- * - Removed redundant roles.php inclusion
+ * 2.2.0
+ * - Previous version functionality
  */
 
 class DPW_RUI_Settings {
     private $active_tab;
     private $validation;
+    private $tabs = array(
+        'umum' => 'Umum',
+        'layanan' => 'Layanan',
+        'roles' => 'Role Management'
+    );
 
     public function __construct() {
         $this->active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'umum';
-        
-        // Register settings
         add_action('admin_init', array($this, 'register_settings'));
+        add_action('admin_enqueue_scripts', array($this, 'enqueue_assets'));
+        
+        // Initialize components on construct
+        $this->init_components();
+    }
+
+    private function init_components() {
+        // Initialize validation if not exists
+        if (!isset($this->validation)) {
+            require_once DPW_RUI_PLUGIN_DIR . 'includes/class-dpw-rui-validation.php';
+            $this->validation = new DPW_RUI_Validation();
+        }
+
+        // Initialize roles settings
+        require_once DPW_RUI_PLUGIN_DIR . 'admin/roles.php';
+        global $dpw_rui_roles_settings;
+        if (!isset($dpw_rui_roles_settings)) {
+            $dpw_rui_roles_settings = new DPW_RUI_Roles_Settings($this->validation);
+        }
+    }
+
+    public function enqueue_assets() {
+        wp_enqueue_script('jquery');
+        wp_enqueue_style('dpw-rui-admin');
     }
 
     public function register_settings() {
-        // General Settings
-        register_setting(
-            'dpw_rui_general_options',
-            'dpw_rui_alamat',
-            array(
-                'type' => 'string',
-                'description' => 'Alamat kantor DPW RUI',
-                'sanitize_callback' => 'sanitize_textarea_field',
-                'show_in_rest' => false,
-            )
-        );
-
-        // Cleanup Settings
         register_setting(
             'dpw_rui_general_options',
             'dpw_rui_remove_data_on_deactivate',
             array(
                 'type' => 'boolean',
-                'description' => 'Hapus semua data saat deaktivasi plugin',
-                'default' => false,
+                'description' => 'Hapus data saat deaktivasi',
                 'sanitize_callback' => 'rest_sanitize_boolean',
+                'show_in_rest' => false,
+                'default' => false,
             )
         );
     }
@@ -61,76 +75,142 @@ class DPW_RUI_Settings {
 
         ?>
         <div class="wrap">
-            <h1><?php echo esc_html(get_admin_page_title()); ?></h1>
+            <h1 class="wp-heading-inline"><?php echo esc_html(get_admin_page_title()); ?></h1>
+            <hr class="wp-header-end">
 
-            <div style="margin: 10px 0 20px;">
-                <a href="<?php echo esc_url(add_query_arg('tab', 'umum')); ?>" 
-                   class="button<?php echo $this->active_tab === 'umum' ? ' button-primary' : ''; ?>"
-                   style="margin-right: 10px;">Umum</a>
-                <a href="<?php echo esc_url(add_query_arg('tab', 'layanan')); ?>"
-                   class="button<?php echo $this->active_tab === 'layanan' ? ' button-primary' : ''; ?>"
-                   style="margin-right: 10px;">Layanan</a>
-                <a href="<?php echo esc_url(add_query_arg('tab', 'roles')); ?>"
-                   class="button<?php echo $this->active_tab === 'roles' ? ' button-primary' : ''; ?>">Role Management</a>
-            </div>
+            <?php settings_errors('dpw_rui_messages'); ?>
 
-            <?php
-            if (isset($_GET['settings-updated'])) {
-                add_settings_error(
-                    'dpw_rui_messages',
-                    'dpw_rui_message',
-                    __('Pengaturan berhasil disimpan.'),
-                    'updated'
-                );
-            }
-            settings_errors('dpw_rui_messages');
-            ?>
-
-            <?php 
-            // Route ke file yang sesuai
-            switch($this->active_tab) {
-                case 'umum':
-                    require_once DPW_RUI_PLUGIN_DIR . 'admin/general.php';
-                    break;
-                case 'layanan':
-                    require_once DPW_RUI_PLUGIN_DIR . 'admin/services.php';
-                    break;
-                case 'roles':
-                    global $dpw_rui_roles;
-                    if(class_exists('DPW_RUI_Roles_Settings')) {
-                        $dpw_rui_roles->render_page();
+            <div class="card col-lg-8 shadow mb-4">
+                <div class="card-header">
+                    <h2 class="nav-tab-wrapper wp-clearfix">
+                        <?php foreach ($this->tabs as $tab_key => $tab_label): ?>
+                            <a href="<?php echo esc_url(add_query_arg(array(
+                                'page' => 'dpw-rui-settings',
+                                'tab' => $tab_key
+                            ), admin_url('admin.php'))); ?>" 
+                               class="nav-tab <?php echo $this->active_tab === $tab_key ? 'nav-tab-active' : ''; ?>">
+                                <?php echo esc_html($tab_label); ?>
+                            </a>
+                        <?php endforeach; ?>
+                    </h2>
+                </div>
+                <div class="card-body">
+                    <?php
+                    try {
+                        switch($this->active_tab) {
+                            case 'umum':
+                                $this->render_general_tab();
+                                break;
+                            case 'layanan':
+                                $this->render_services_tab();
+                                break;
+                            case 'roles':
+                                $this->render_roles_tab();
+                                break;
+                        }
+                    } catch (Exception $e) {
+                        echo '<div class="notice notice-error"><p>Error: ' . esc_html($e->getMessage()) . '</p></div>';
                     }
-                    break;
-            }
-            ?>
+                    ?>
+                </div>
+            </div>
+            
+            <?php if ($this->active_tab === 'umum'): ?>
+                <?php $this->render_cleanup_settings(); ?>
+            <?php endif; ?>
         </div>
+
+        <script>
+        jQuery(document).ready(function($) {
+            // Form submission loading state
+            $('form').on('submit', function() {
+                $(this).addClass('dpw-rui-loading');
+                $('button, input[type="submit"]', this).prop('disabled', true);
+            });
+
+            // Auto-hide success messages
+            setTimeout(function() {
+                $('.notice-success').slideUp();
+            }, 3000);
+
+            // Tab switching confirmation if form is dirty
+            $('.nav-tab').on('click', function(e) {
+                var isDirty = $('form').serialize() !== $('form').data('serialized');
+                if (isDirty) {
+                    if (!confirm('Ada perubahan yang belum disimpan. Yakin ingin pindah tab?')) {
+                        e.preventDefault();
+                        return false;
+                    }
+                }
+            });
+
+            // Store initial form state
+            $('form').each(function() {
+                $(this).data('serialized', $(this).serialize());
+            });
+        });
+        </script>
         <?php
+    }
+
+    private function render_general_tab() {
+        require_once DPW_RUI_PLUGIN_DIR . 'admin/general.php';
+        global $dpw_rui_general_settings;
+        if (isset($dpw_rui_general_settings)) {
+            $dpw_rui_general_settings->render_page();
+        }
+    }
+
+    private function render_services_tab() {
+        require_once DPW_RUI_PLUGIN_DIR . 'admin/services.php';
+        global $dpw_rui_services_settings;
+        if (isset($dpw_rui_services_settings)) {
+            $dpw_rui_services_settings->render_page();
+        }
+    }
+
+    private function render_roles_tab() {
+        global $dpw_rui_roles_settings;
+        if (isset($dpw_rui_roles_settings)) {
+            $dpw_rui_roles_settings->render_page();
+        } else {
+            throw new Exception('Role settings component not initialized properly');
+        }
     }
 
     public function render_cleanup_settings() {
         ?>
-        <div class="card" style="max-width: 100%; background: #fff; padding: 20px; margin-top: 20px;">
-            <h2 style="margin-top: 0;">Pengaturan Pembersihan Data</h2>
-            
-            <table class="form-table">
-                <tr>
-                    <th scope="row">Pembersihan Data</th>
-                    <td>
-                        <label>
+        <div class="card shadow mb-4">
+            <div class="card-header">
+                <h6 class="m-0 font-weight-bold text-primary">Pembersihan Data</h6>
+            </div>
+            <div class="card-body">
+                <form method="post" action="options.php" class="needs-validation" novalidate>
+                    <?php settings_fields('dpw_rui_general_options'); ?>
+                    
+                    <div class="form-group">
+                        <div class="custom-control custom-checkbox">
                             <input type="checkbox" 
+                                   class="custom-control-input" 
+                                   id="dpw_rui_remove_data_on_deactivate"
                                    name="dpw_rui_remove_data_on_deactivate" 
                                    value="1" 
                                    <?php checked(get_option('dpw_rui_remove_data_on_deactivate')); ?>>
-                            Hapus semua data saat plugin dinonaktifkan
-                        </label>
-                        <p class="description">
-                            Jika dicentang, semua data anggota, foto, dan pengaturan akan dihapus saat plugin dinonaktifkan.
-                            <br>
-                            <strong>Peringatan:</strong> Data yang sudah dihapus tidak dapat dikembalikan.
-                        </p>
-                    </td>
-                </tr>
-            </table>
+                            <label class="custom-control-label" for="dpw_rui_remove_data_on_deactivate">
+                                Hapus semua data saat plugin dinonaktifkan
+                            </label>
+                        </div>
+                        <div class="mt-2">
+                            <small class="form-text text-danger">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                Data yang sudah dihapus tidak dapat dikembalikan.
+                            </small>
+                        </div>
+                    </div>
+
+                    <?php submit_button('Simpan Pengaturan'); ?>
+                </form>
+            </div>
         </div>
         <?php
     }
