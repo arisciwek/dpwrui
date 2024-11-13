@@ -166,7 +166,6 @@ class DPW_RUI {
         'nomor_anggota' => 20
     );
 
-
     private function validate_field_length($data) {
         $errors = array();
         
@@ -397,7 +396,6 @@ class DPW_RUI {
         
         $this->settings->render_page();
     }
-
 
     private function display_detail_anggota() {
         if(!current_user_can('dpw_rui_read')) {
@@ -648,3 +646,4 @@ class DPW_RUI {
         $this->define_admin_hooks();
     }
 }
+
