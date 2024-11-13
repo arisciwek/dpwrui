@@ -32,6 +32,12 @@ class DPW_RUI {
         
         $this->load_dependencies();
         $this->define_admin_hooks();
+
+        add_filter('upload_dir', array($this, 'custom_upload_dir'));
+        add_filter('ajax_query_attachments_args', array($this, 'filter_media_library'));
+        add_action('add_attachment', array($this, 'set_attachment_privacy'));
+        add_filter('wp_get_attachment_url', array($this, 'filter_attachment_url'), 10, 2);
+  
     }
 
     private function load_dependencies() {
@@ -48,6 +54,7 @@ class DPW_RUI {
         add_action('admin_menu', array($this, 'add_admin_menu'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_styles'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_scripts'));
+        add_action('admin_notices', array($this, 'activation_notice'));
     }
 
     public function enqueue_styles() {
@@ -135,6 +142,12 @@ class DPW_RUI {
                 'dpw-rui-settings',
                 array($this, 'display_settings_page')
             );
+        }
+        
+        // Add foto action handler
+        if(isset($_GET['action']) && $_GET['action'] == 'foto') {
+            $this->display_foto_page();
+            return;
         }
     }
 
@@ -465,6 +478,171 @@ class DPW_RUI {
 
         require_once DPW_RUI_PLUGIN_DIR . 'admin/views/anggota-list.php';
     }
+
+    /**
+     * Add this method to class DPW_RUI
+     */
+    public function activation_notice() {
+        if ($error = get_transient('dpw_rui_activation_error')) {
+            ?>
+            <div class="notice notice-error">
+                <p>Error saat aktivasi plugin DPW RUI:</p>
+                <p><?php echo wp_kses_post($error); ?></p>
+            </div>
+            <?php
+            delete_transient('dpw_rui_activation_error');
+        }
+    }
+    /**
+     * Custom upload directory per user
+     */
+    public function custom_upload_dir($uploads) {
+        // Only modify for our plugin uploads
+        if(!empty($_POST['is_dpw_rui_upload'])) {
+            $user_id = get_current_user_id();
+            $subdir = '/dpw-rui/' . $user_id;
+            
+            $uploads['subdir'] = $subdir;
+            $uploads['path'] = $uploads['basedir'] . $subdir;
+            $uploads['url'] = $uploads['baseurl'] . $subdir;
+        }
+        
+        return $uploads;
+    }
+
+    /**
+     * Filter media library to show only user's own attachments
+     */
+    public function filter_media_library($query) {
+        // Skip for administrators
+        if(current_user_can('manage_options')) {
+            return $query;
+        }
+
+        $user_id = get_current_user_id();
+        
+        if(!isset($query['author'])) {
+            $query['author'] = $user_id;
+        }
+        
+        return $query;
+    }
+
+    /**
+     * Set attachment privacy meta
+     */
+    public function set_attachment_privacy($attachment_id) {
+        if(!empty($_POST['is_dpw_rui_upload'])) {
+            update_post_meta($attachment_id, '_dpw_rui_attachment', '1');
+            update_post_meta($attachment_id, '_dpw_rui_user', get_current_user_id());
+            
+            // Set attachment post author
+            wp_update_post(array(
+                'ID' => $attachment_id,
+                'post_author' => get_current_user_id()
+            ));
+        }
+    }
+
+    /**
+     * Filter attachment URL access
+     */
+    public function filter_attachment_url($url, $attachment_id) {
+        // Skip if not our attachment
+        if(!get_post_meta($attachment_id, '_dpw_rui_attachment', true)) {
+            return $url;
+        }
+        
+        // Allow admin access
+        if(current_user_can('manage_options')) {
+            return $url;
+        }
+        
+        $attachment_user = get_post_meta($attachment_id, '_dpw_rui_user', true);
+        $current_user = get_current_user_id();
+        
+        // Check if user owns the attachment
+        if($attachment_user != $current_user) {
+            // Check if user can view the associated anggota
+            global $wpdb;
+            $anggota_id = $wpdb->get_var($wpdb->prepare(
+                "SELECT anggota_id FROM {$wpdb->prefix}dpw_rui_anggota_foto WHERE attachment_id = %d",
+                $attachment_id
+            ));
+            
+            if($anggota_id) {
+                $anggota = $wpdb->get_row($wpdb->prepare(
+                    "SELECT created_by FROM {$wpdb->prefix}dpw_rui_anggota WHERE id = %d",
+                    $anggota_id
+                ));
+                
+                // Allow access if user has read permission or owns the anggota
+                if(!current_user_can('dpw_rui_read') && 
+                   (!current_user_can('dpw_rui_edit_own') || $anggota->created_by != $current_user)) {
+                    return '';
+                }
+            } else {
+                return '';
+            }
+        }
+        
+        return $url;
+    }
+    /**
+     * Display photo management page
+     */
+    public function display_foto_page() {
+        // Verify access
+        if(!isset($_GET['id'])) {
+            wp_die(__('Invalid request'));
+        }
+
+        $id = absint($_GET['id']);
+        
+        // Get anggota data
+        global $wpdb;
+        $anggota = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}dpw_rui_anggota WHERE id = %d",
+            $id
+        ));
+
+        if(!$anggota) {
+            wp_die(__('Data anggota tidak ditemukan.'));
+        }
+
+        // Check permissions
+        if(!current_user_can('dpw_rui_update') && 
+           (!current_user_can('dpw_rui_edit_own') || $anggota->created_by != get_current_user_id())) {
+            wp_die(__('Anda tidak memiliki akses untuk mengelola foto.'));
+        }
+
+        // Include the photo management view
+        require_once DPW_RUI_PLUGIN_DIR . 'admin/views/anggota-foto.php';
+    }
+
+    /**
+     * Handle file upload with privacy
+     */
+    private function handle_photo_upload($file, $anggota_id) {
+        // Add flag for custom upload directory
+        $_POST['is_dpw_rui_upload'] = true;
+        
+        require_once(ABSPATH . 'wp-admin/includes/image.php');
+        require_once(ABSPATH . 'wp-admin/includes/file.php');
+        require_once(ABSPATH . 'wp-admin/includes/media.php');
+        
+        // Upload file
+        $attachment_id = media_handle_upload($file, 0);
+        
+        if(is_wp_error($attachment_id)) {
+            return $attachment_id;
+        }
+        
+        // Privacy is handled by set_attachment_privacy hook
+        
+        return $attachment_id;
+    }
+
 
     public function run() {
         $this->define_admin_hooks();
