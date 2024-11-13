@@ -1,181 +1,145 @@
 <?php
 /**
- * Path: /wp-content/plugins/dpwrui/admin/general.php
- * Version: 1.0.3 
- *
- * Changelog:
- * 1.0.3
- * - Restrukturisasi kelas untuk bekerja dengan sistem settings terpusat
- * - Penambahan method render_content() untuk integrasi dengan settings.php
- * - Penghapusan duplikasi header dan navigasi
- * - Pemindahan logika settings ke constructor
- * - Perbaikan sanitasi dan validasi
- *
- * 1.0.2
- * - Redesigned UI to match modern WordPress style
- * - Added proper form handling
- * - Improved settings registration 
- * 
- * 1.0.1
- * - Initial release
- */
-
-if (!defined('ABSPATH')) {
-    exit;
-}
+* Path: /wp-content/plugins/dpwrui/admin/general.php
+* Version: 2.0.0
+* 
+* Changelog:
+* 2.0.0
+* - Adjusted for new plugin structure
+* - Converted to proper class structure
+* - Added integration with main settings class
+* - Improved form handling and validation
+* 
+* 1.0.2
+* - Redesigned UI to match modern WordPress style
+* - Added proper form handling
+* - Improved settings registration
+* - Fixed nonce verification
+* - Added validation messages
+*/
 
 class DPW_RUI_General_Settings {
-    private $settings_group;
-    private $settings_section;
-    private $options;
+   
+   private $parent_slug = 'dpw-rui-settings';
+   private $validation;
 
-    public function __construct() {
-        $this->settings_group = 'dpw_rui_general_options';
-        $this->settings_section = 'dpw_rui_general_section';
-        
-        $this->options = array(
-            'dpw_rui_alamat' => array(
-                'title' => 'Alamat Kantor DPW RUI',
-                'type' => 'textarea',
-                'description' => 'Alamat lengkap kantor DPW RUI'
-            ),
-            'dpw_rui_email' => array(
-                'title' => 'Email',
-                'type' => 'text',
-                'description' => 'Email kontak DPW RUI'
-            ),
-            'dpw_rui_telpon' => array(
-                'title' => 'Nomor Telepon',
-                'type' => 'text',
-                'description' => 'Nomor telepon yang dapat dihubungi'
-            )
-        );
+   public function __construct(DPW_RUI_Validation $validation) {
+       $this->validation = $validation;
+       add_action('admin_init', array($this, 'register_settings'));
+   }
 
-        $this->init_settings();
-    }
+   public function register_settings() {
+       register_setting(
+           'dpw_rui_general_options',
+           'dpw_rui_alamat',
+           array(
+               'type' => 'string',
+               'description' => 'Alamat kantor DPW RUI',
+               'sanitize_callback' => array($this, 'sanitize_alamat'),
+               'show_in_rest' => false,
+           )
+       );
 
-    private function init_settings() {
-        add_action('admin_init', array($this, 'register_settings'));
-    }
+       add_settings_section(
+           'dpw_rui_general_section',
+           'Pengaturan Umum',
+           array($this, 'section_callback'),
+           'dpw_rui_general'
+       );
 
-    public function register_settings() {
-        // Register setting group
-        register_setting(
-            $this->settings_group,
-            'dpw_rui_alamat',
-            array(
-                'type' => 'string',
-                'sanitize_callback' => 'sanitize_textarea_field',
-                'default' => ''
-            )
-        );
+       add_settings_field(
+           'dpw_rui_alamat',
+           'Alamat Kantor DPW RUI',
+           array($this, 'alamat_callback'),
+           'dpw_rui_general',
+           'dpw_rui_general_section'
+       );
+   }
 
-        register_setting(
-            $this->settings_group,
-            'dpw_rui_email',
-            array(
-                'type' => 'string',
-                'sanitize_callback' => 'sanitize_email',
-                'default' => ''
-            )
-        );
+   public function section_callback() {
+       echo '<p>Pengaturan umum untuk DPW RUI</p>';
+   }
 
-        register_setting(
-            $this->settings_group,
-            'dpw_rui_telpon',
-            array(
-                'type' => 'string',
-                'sanitize_callback' => 'sanitize_text_field',
-                'default' => ''
-            )
-        );
+   public function alamat_callback() {
+       $value = get_option('dpw_rui_alamat');
+       ?>
+       <textarea name="dpw_rui_alamat" 
+                 id="dpw_rui_alamat"
+                 rows="4" 
+                 class="large-text"
+                 ><?php echo esc_textarea($value); ?></textarea>
+       <p class="description">Alamat lengkap kantor DPW RUI</p>
+       <?php
+   }
 
-        // Add settings section
-        add_settings_section(
-            $this->settings_section,
-            'Pengaturan Umum',
-            array($this, 'section_callback'),
-            $this->settings_group
-        );
+   public function sanitize_alamat($input) {
+       return sanitize_textarea_field($input);
+   }
 
-        // Add settings fields
-        foreach ($this->options as $id => $option) {
-            add_settings_field(
-                $id,
-                $option['title'],
-                array($this, 'render_field'),
-                $this->settings_group,
-                $this->settings_section,
-                array(
-                    'id' => $id,
-                    'type' => $option['type'],
-                    'description' => $option['description']
-                )
-            );
-        }
-    }
+   public function render_page() {
+       // Check permissions
+       if (!current_user_can('manage_options')) {
+           wp_die(__('Anda tidak memiliki akses ke halaman ini.'));
+       }
 
-    public function section_callback() {
-        echo '<p>Pengaturan dasar untuk DPW RUI. Semua pengaturan akan diterapkan ke seluruh sistem.</p>';
-    }
+       // Handle form submission
+       if (isset($_POST['submit'])) {
+           check_admin_referer('dpw_rui_general_options-options');
+           
+           $alamat = isset($_POST['dpw_rui_alamat']) ? $this->sanitize_alamat($_POST['dpw_rui_alamat']) : '';
+           update_option('dpw_rui_alamat', $alamat);
+           
+           add_settings_error(
+               'dpw_rui_messages',
+               'dpw_rui_message',
+               __('Pengaturan berhasil disimpan.'),
+               'updated'
+           );
+       }
+       
+       ?>
+       <div class="wrap">
+           <div style="max-width: 100%; background: #fff; border: 1px solid #ddd; box-shadow: 0 1px 1px rgba(0,0,0,.04); margin-top: 20px; padding: 20px;">
+               <?php settings_errors('dpw_rui_messages'); ?>
 
-    public function render_field($args) {
-        $id = $args['id'];
-        $type = $args['type'];
-        $value = get_option($id);
-        
-        switch ($type) {
-            case 'textarea':
-                printf(
-                    '<textarea name="%1$s" id="%1$s" rows="4" class="regular-text">%2$s</textarea>',
-                    esc_attr($id),
-                    esc_textarea($value)
-                );
-                break;
-                
-            case 'text':
-            default:
-                printf(
-                    '<input type="text" name="%1$s" id="%1$s" value="%2$s" class="regular-text">',
-                    esc_attr($id),
-                    esc_attr($value)
-                );
-                break;
-        }
+               <h2 style="color: #2271b1; font-size: 16px; margin: 0 0 20px;">
+                   Pengaturan Umum
+               </h2>
+               
+               <form method="post" action="options.php">
+                   <?php
+                       settings_fields('dpw_rui_general_options');
+                       do_settings_sections('dpw_rui_general');
+                       submit_button('Simpan Pengaturan');
+                   ?>
+               </form>
+           </div>
 
-        if (!empty($args['description'])) {
-            printf('<p class="description">%s</p>', esc_html($args['description']));
-        }
-    }
-
-    public function render_content() {
-        // Check if settings were saved
-        if (isset($_GET['settings-updated']) && $_GET['settings-updated']) {
-            add_settings_error(
-                'dpw_rui_messages',
-                'dpw_rui_message',
-                __('Pengaturan berhasil disimpan.'),
-                'updated'
-            );
-        }
-        
-        ?>
-        <div class="card" style="max-width: 100%; background: #fff; border: 1px solid #ddd; box-shadow: 0 1px 1px rgba(0,0,0,.04); margin-top: 20px; padding: 20px;">
-            <?php settings_errors('dpw_rui_messages'); ?>
-
-            <h2 style="color: #2271b1; font-size: 16px; margin: 0 0 20px;">
-                <span class="dashicons dashicons-admin-settings" style="font-size: 20px; margin-right: 5px;"></span>
-                Pengaturan Umum DPW RUI
-            </h2>
-
-            <form method="post" action="options.php">
-                <?php
-                settings_fields($this->settings_group);
-                do_settings_sections($this->settings_group);
-                submit_button('Simpan Pengaturan');
-                ?>
-            </form>
-        </div>
-        <?php
-    }
+           <?php 
+           // Render cleanup settings jika diperlukan
+           global $dpw_rui_settings;
+           if(method_exists($dpw_rui_settings, 'render_cleanup_settings')) {
+               $dpw_rui_settings->render_cleanup_settings();
+           }
+           ?>
+       </div>
+       <?php
+   }
 }
+
+// Initialize only when needed
+function dpw_rui_init_general_settings() {
+   global $pagenow, $dpw_rui_validation;
+   if ($pagenow === 'admin.php' && isset($_GET['page']) && $_GET['page'] === 'dpw-rui-settings') {
+       global $dpw_rui_general_settings;
+       if(!isset($dpw_rui_general_settings)) {
+           $dpw_rui_general_settings = new DPW_RUI_General_Settings($dpw_rui_validation);
+       }
+       
+       // Only render if we're on the general tab or no tab specified
+       if (!isset($_GET['tab']) || $_GET['tab'] === 'umum') {
+           $dpw_rui_general_settings->render_page();
+       }
+   }
+}
+add_action('admin_init', 'dpw_rui_init_general_settings');

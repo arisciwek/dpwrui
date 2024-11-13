@@ -51,7 +51,7 @@ $photos = $wpdb->get_results(
     <!-- Main Content Section -->
     <div class="row">
         <!-- Left Column - Detail Anggota -->
-        <div class="col-lg-5">
+        <div class="col-lg-7">
             <div class="card shadow mb-4">
                 <div class="card-header py-3">
                     <h6 class="m-0 font-weight-bold text-primary">Informasi Anggota</h6>
@@ -114,7 +114,7 @@ $photos = $wpdb->get_results(
         </div>
 
         <!-- Right Column - Foto -->
-        <div class="col-lg-6">
+        <div class="col-lg-5">
             <div class="card shadow mb-4">
                 <div class="card-header py-3 d-flex justify-content-between align-items-center">
                     <h6 class="m-0 font-weight-bold text-primary">Foto Anggota</h6>

@@ -1,7 +1,7 @@
 <?php
 /**
  * Path: /wp-content/plugins/dpwrui/admin/views/anggota-foto.php
- * Version: 1.0.0
+ * Version: 1.0.1
  * 
  * Halaman untuk mengelola foto anggota DPW RUI
  * - Upload foto utama (required) dan tambahan (optional, max 3)  
@@ -11,18 +11,24 @@
  * - Fungsi set foto utama
  * 
  * Changelog:
+ * 1.0.1
+ * - Fixed undefined variable $success by initializing it
+ * - Fixed nonce verification in form submission and actions
+ * - Added proper nonce field names and verification
+ * - Improved error handling
+ * 
  * 1.0.0
  * - Initial release with core photo management functionality
- * - Upload foto dengan validasi
- * - Display foto existing
- * - Hapus foto
- * - Set foto utama
  */
 
 // Validasi akses
 if (!defined('ABSPATH')) {
     exit;
 }
+
+// Initialize variables
+$success = false;
+$errors = array();
 
 $id = absint($_GET['id']);
 
@@ -55,10 +61,10 @@ $photos = $wpdb->get_results(
 
 // Handle form submission
 if(isset($_POST['submit'])) {
-    check_admin_referer('dpw_rui_upload_foto');
-    
-    $errors = array();
-    $success = false;
+    // Verify nonce
+    if (!isset($_POST['_wpnonce']) || !wp_verify_nonce($_POST['_wpnonce'], 'dpw_rui_upload_foto')) {
+        wp_die(__('Invalid nonce verification'));
+    }
     
     // Validasi jumlah foto existing
     $existing_count = count($photos);
@@ -87,7 +93,13 @@ if(isset($_POST['submit'])) {
         
         // Jika tidak ada error, proses upload
         if(empty($errors)) {
-            $attachment_id = $this->handle_photo_upload('foto', $id);
+            $_POST['is_dpw_rui_upload'] = true; // Flag for custom upload dir
+            
+            require_once(ABSPATH . 'wp-admin/includes/image.php');
+            require_once(ABSPATH . 'wp-admin/includes/file.php');
+            require_once(ABSPATH . 'wp-admin/includes/media.php');
+            
+            $attachment_id = media_handle_upload('foto', 0);
             
             if(is_wp_error($attachment_id)) {
                 $errors[] = $attachment_id->get_error_message();
@@ -113,6 +125,14 @@ if(isset($_POST['submit'])) {
                     wp_delete_attachment($attachment_id, true);
                 } else {
                     $success = true;
+                    
+                    // Refresh photos list
+                    $photos = $wpdb->get_results(
+                        $wpdb->prepare(
+                            "SELECT * FROM {$wpdb->prefix}dpw_rui_anggota_foto WHERE anggota_id = %d ORDER BY is_main DESC, id ASC",
+                            $id
+                        )
+                    );
                 }
             }
         }
@@ -120,7 +140,11 @@ if(isset($_POST['submit'])) {
 }
 
 // Handle set main photo
-if(isset($_GET['set_main']) && check_admin_referer('set_main_foto')) {
+if(isset($_GET['set_main'])) {
+    if(!isset($_GET['_wpnonce']) || !wp_verify_nonce($_GET['_wpnonce'], 'set_main_foto_' . $_GET['set_main'])) {
+        wp_die(__('Invalid nonce verification'));
+    }
+    
     $photo_id = absint($_GET['set_main']);
     
     // Reset all photos to non-main
@@ -133,7 +157,7 @@ if(isset($_GET['set_main']) && check_admin_referer('set_main_foto')) {
     );
     
     // Set selected photo as main
-    $wpdb->update(
+    $result = $wpdb->update(
         $wpdb->prefix . 'dpw_rui_anggota_foto',
         array('is_main' => 1),
         array('id' => $photo_id),
@@ -141,11 +165,25 @@ if(isset($_GET['set_main']) && check_admin_referer('set_main_foto')) {
         array('%d')
     );
     
-    $success = true;
+    if($result !== false) {
+        $success = true;
+        
+        // Refresh photos list
+        $photos = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}dpw_rui_anggota_foto WHERE anggota_id = %d ORDER BY is_main DESC, id ASC",
+                $id
+            )
+        );
+    }
 }
 
 // Handle delete photo
-if(isset($_GET['delete']) && check_admin_referer('delete_foto')) {
+if(isset($_GET['delete'])) {
+    if(!isset($_GET['_wpnonce']) || !wp_verify_nonce($_GET['_wpnonce'], 'delete_foto_' . $_GET['delete'])) {
+        wp_die(__('Invalid nonce verification'));
+    }
+    
     $photo_id = absint($_GET['delete']);
     
     // Get photo data
@@ -162,24 +200,27 @@ if(isset($_GET['delete']) && check_admin_referer('delete_foto')) {
         wp_delete_attachment($photo->attachment_id, true);
         
         // Delete from custom table
-        $wpdb->delete(
+        $result = $wpdb->delete(
             $wpdb->prefix . 'dpw_rui_anggota_foto',
             array('id' => $photo_id),
             array('%d')
         );
         
-        $success = true;
+        if($result !== false) {
+            $success = true;
+        }
+        
+        // Refresh photos list
+        $photos = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}dpw_rui_anggota_foto WHERE anggota_id = %d ORDER BY is_main DESC, id ASC",
+                $id
+            )
+        );
     }
-    
-    // Refresh photos list
-    $photos = $wpdb->get_results(
-        $wpdb->prepare(
-            "SELECT * FROM {$wpdb->prefix}dpw_rui_anggota_foto WHERE anggota_id = %d ORDER BY is_main DESC, id ASC",
-            $id
-        )
-    );
 }
 ?>
+
 
 <div class="wrap">
     <h1 class="wp-heading-inline">Kelola Foto Anggota</h1>
@@ -254,7 +295,7 @@ if(isset($_GET['delete']) && check_admin_referer('delete_foto')) {
                                     <?php else: ?>
                                         <a href="<?php echo wp_nonce_url(add_query_arg(array(
                                             'set_main' => $photo->id
-                                        )), 'set_main_foto'); ?>" 
+                                        )), 'set_main_foto_' . $photo->id); ?>" 
                                            class="btn btn-sm btn-outline-primary mb-2">
                                             Jadikan Foto Utama
                                         </a>
@@ -263,7 +304,7 @@ if(isset($_GET['delete']) && check_admin_referer('delete_foto')) {
                                     <?php if(!$photo->is_main || count($photos) > 1): ?>
                                         <a href="<?php echo wp_nonce_url(add_query_arg(array(
                                             'delete' => $photo->id
-                                        )), 'delete_foto'); ?>"
+                                        )), 'delete_foto_' . $photo->id); ?>"
                                            class="btn btn-sm btn-outline-danger"
                                            onclick="return confirm('Yakin ingin menghapus foto ini?');">
                                             Hapus Foto

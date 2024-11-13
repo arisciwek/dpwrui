@@ -1,97 +1,128 @@
 <?php
 /**
- * Path: /wp-content/plugins/dpwrui/admin/services.php
- * Version: 1.0.2
- *
- * Changelog:
- * 1.0.2
- * - Restrukturisasi kelas untuk bekerja dengan sistem settings terpusat
- * - Penambahan method render_content() untuk integrasi dengan settings.php
- * - Penghapusan duplikasi header dan navigasi
- * - Penyesuaian struktur UI dengan halaman settings lainnya
- * - Penambahan placeholder untuk fitur mendatang
- *
- * 1.0.1 
- * - Initial release
- */
-
-if (!defined('ABSPATH')) {
-    exit;
-}
+* Path: /wp-content/plugins/dpwrui/admin/services.php
+* Version: 2.0.0
+* 
+* Changelog:
+* 2.0.0
+* - Converted to proper class structure
+* - Added integration with main settings class
+* - Added proper access control
+* - Added proper initialization
+* 
+* 1.0.0
+* - Initial basic services placeholder page
+*/
 
 class DPW_RUI_Services_Settings {
-    
-    private $future_features;
+   
+   private $parent_slug = 'dpw-rui-settings';
+   private $validation;
 
-    public function __construct() {
-        $this->future_features = array(
-            'service_types' => array(
-                'title' => 'Pengelolaan Jenis Layanan',
-                'description' => 'Menambah, mengubah dan menghapus jenis layanan'
-            ),
-            'service_workflow' => array(
-                'title' => 'Pengaturan Workflow Layanan',
-                'description' => 'Mengatur alur proses setiap jenis layanan'
-            ),
-            'service_forms' => array(
-                'title' => 'Form Builder Layanan',
-                'description' => 'Membuat form kustom untuk setiap jenis layanan'
-            ),
-            'service_documents' => array(
-                'title' => 'Manajemen Dokumen',
-                'description' => 'Mengatur template dan persyaratan dokumen'
-            ),
-            'service_notifications' => array(
-                'title' => 'Notifikasi Layanan',
-                'description' => 'Mengatur notifikasi email dan sistem'
-            ),
-            'service_reports' => array(
-                'title' => 'Laporan Layanan',
-                'description' => 'Membuat dan mengatur template laporan'
-            )
-        );
-    }
+   public function __construct(DPW_RUI_Validation $validation) {
+       $this->validation = $validation;
+   }
 
-    public function render_content() {
-        ?>
-        <div class="card" style="max-width: 100%; background: #fff; border: 1px solid #ddd; box-shadow: 0 1px 1px rgba(0,0,0,.04); margin-top: 20px; padding: 20px;">
-            <h2 style="color: #2271b1; font-size: 16px; margin: 0 0 20px;">
-                <span class="dashicons dashicons-admin-generic" style="font-size: 20px; margin-right: 5px;"></span>
-                Pengaturan Layanan
-            </h2>
+   public function render_page() {
+       // Check permissions
+       if (!current_user_can('manage_options')) {
+           wp_die(__('Anda tidak memiliki akses ke halaman ini.'));
+       }
+       
+       ?>
+       <div class="wrap">
+           <div class="card shadow mb-4">
+               <div class="card-header py-3">
+                   <h6 class="m-0 font-weight-bold text-primary">Pengaturan Layanan</h6>
+               </div>
+               <div class="card-body">
+                   <?php if (isset($_GET['settings-updated'])): ?>
+                       <div class="notice notice-success is-dismissible">
+                           <p><?php _e('Pengaturan berhasil disimpan.'); ?></p>
+                       </div>
+                   <?php endif; ?>
 
-            <div class="notice notice-info" style="margin: 0 0 20px;">
-                <p>Halaman ini akan digunakan untuk pengembangan fitur layanan di masa mendatang.</p>
-            </div>
+                   <div class="alert alert-info">
+                       <h4 class="alert-heading mb-2">Pengembangan Mendatang</h4>
+                       <p class="mb-0">
+                           Halaman ini akan digunakan untuk pengaturan:
+                       </p>
+                       <ul class="mt-2 mb-0">
+                           <li>Jenis-jenis layanan DPW RUI</li>
+                           <li>Biaya layanan</li>
+                           <li>Persyaratan layanan</li>
+                           <li>Durasi proses layanan</li>
+                           <li>Dan fitur layanan lainnya</li>
+                       </ul>
+                   </div>
 
-            <div style="background: #f8f9fa; padding: 20px; border-radius: 4px;">
-                <h3 style="margin-top: 0; color: #2271b1;">Fitur Yang Akan Datang:</h3>
-                
-                <div class="feature-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; margin-top: 20px;">
-                    <?php foreach ($this->future_features as $key => $feature): ?>
-                        <div class="feature-card" style="background: white; padding: 20px; border: 1px solid #ddd; border-radius: 4px;">
-                            <h4 style="margin: 0 0 10px; color: #2271b1;">
-                                <span class="dashicons dashicons-yes-alt" style="color: #1cc88a;"></span>
-                                <?php echo esc_html($feature['title']); ?>
-                            </h4>
-                            <p style="margin: 0; color: #666;">
-                                <?php echo esc_html($feature['description']); ?>
-                            </p>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
-            </div>
+                   <div class="alert alert-warning mt-4">
+                       <p class="mb-0">
+                           <i class="fas fa-info-circle mr-1"></i>
+                           Fitur ini masih dalam tahap pengembangan dan akan tersedia pada versi mendatang.
+                       </p>
+                   </div>
+               </div>
+           </div>
 
-            <div style="margin-top: 30px;">
-                <div class="notice notice-warning inline">
-                    <p>
-                        <strong>Catatan Pengembangan:</strong><br>
-                        Fitur-fitur di atas masih dalam tahap perencanaan dan akan dikembangkan secara bertahap.
-                        Prioritas pengembangan akan disesuaikan dengan kebutuhan pengguna.
-                    </p>
-                </div>
-            </div>
-        </div>
-        <?php
-    }
+           <div class="card shadow">
+               <div class="card-header py-3">
+                   <h6 class="m-0 font-weight-bold text-primary">Status Pengembangan</h6>
+               </div>
+               <div class="card-body">
+                   <div class="table-responsive">
+                       <table class="table table-bordered">
+                           <thead>
+                               <tr>
+                                   <th>Fitur</th>
+                                   <th>Status</th>
+                                   <th>Target Release</th>
+                               </tr>
+                           </thead>
+                           <tbody>
+                               <tr>
+                                   <td>Manajemen Jenis Layanan</td>
+                                   <td><span class="badge badge-warning">Planned</span></td>
+                                   <td>v2.1.0</td>
+                               </tr>
+                               <tr>
+                                   <td>Konfigurasi Biaya</td>
+                                   <td><span class="badge badge-warning">Planned</span></td>
+                                   <td>v2.1.0</td>
+                               </tr>
+                               <tr>
+                                   <td>Manajemen Persyaratan</td>
+                                   <td><span class="badge badge-warning">Planned</span></td>
+                                   <td>v2.2.0</td>
+                               </tr>
+                               <tr>
+                                   <td>Pengaturan SLA</td>
+                                   <td><span class="badge badge-warning">Planned</span></td>
+                                   <td>v2.2.0</td>
+                               </tr>
+                           </tbody>
+                       </table>
+                   </div>
+               </div>
+           </div>
+       </div>
+       <?php
+   }
 }
+
+// Initialize only when needed
+function dpw_rui_init_services_settings() {
+   global $pagenow, $dpw_rui_validation;
+   if ($pagenow === 'admin.php' && 
+       isset($_GET['page']) && $_GET['page'] === 'dpw-rui-settings' &&
+       isset($_GET['tab']) && $_GET['tab'] === 'layanan') {
+       
+       global $dpw_rui_services_settings;
+       if(!isset($dpw_rui_services_settings)) {
+           $dpw_rui_services_settings = new DPW_RUI_Services_Settings($dpw_rui_validation);
+       }
+       
+       $dpw_rui_services_settings->render_page();
+   }
+}
+add_action('admin_init', 'dpw_rui_init_services_settings');
