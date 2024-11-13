@@ -1,4 +1,23 @@
 <?php
+/**
+ * Path: /wp-content/plugins/dpwrui/admin/views/anggota-form.php  
+ * Version: 1.0.3
+ *
+ * Changelog:
+ * 1.0.3
+ * - Fixed form action untuk handle add/edit dengan benar
+ * - Fixed redirect url handling
+ * - Improved error handling untuk validasi form
+ * - Fixed hidden fields untuk routing
+ * 
+ * 1.0.2
+ * - Added form validation
+ * - Added nonce field
+ * 
+ * 1.0.1
+ * - Initial form layout
+ */
+
 // Cek jika mode edit
 $is_edit = isset($_GET['action']) && $_GET['action'] == 'edit';
 $anggota = null;
@@ -19,6 +38,11 @@ if($is_edit) {
         wp_die(__('Anda tidak memiliki akses untuk mengubah data ini.'));
     }
 }
+
+// Set form action URL
+$form_action = $is_edit ? 
+    admin_url('admin.php?page=dpw-rui&action=edit&id=' . absint($_GET['id'])) : 
+    admin_url('admin.php?page=dpw-rui-add');
 ?>
 
 <div class="wrap">
@@ -35,7 +59,7 @@ if($is_edit) {
             </h6>
         </div>
         <div class="card-body">
-            <form method="post" action="" class="needs-validation" novalidate>
+            <form method="post" action="<?php echo esc_url($form_action); ?>" class="needs-validation" novalidate>
                 <?php wp_nonce_field('dpw_rui_add_anggota'); ?>
                 
                 <?php if($is_edit): ?>
@@ -45,11 +69,12 @@ if($is_edit) {
                 <div class="form-group row">
                     <label class="col-sm-2 col-form-label">Nama Perusahaan <span class="text-danger">*</span></label>
                     <div class="col-sm-10">
-                        <input type="text" name="nama_perusahaan" class="form-control" required
+                        <input type="text" 
+                               name="nama_perusahaan" 
+                               class="form-control" 
+                               maxlength="100"
+                               required
                                value="<?php echo $is_edit ? esc_attr($anggota->nama_perusahaan) : ''; ?>">
-                        <div class="invalid-feedback">
-                            Nama perusahaan wajib diisi
-                        </div>
                     </div>
                 </div>
 
@@ -90,8 +115,12 @@ if($is_edit) {
                 <div class="form-group row">
                     <label class="col-sm-2 col-form-label">Kode Pos</label>
                     <div class="col-sm-10">
-                        <input type="text" name="kode_pos" class="form-control"
+                        <input type="text" 
+                               name="kode_pos" 
+                               class="form-control"
+                               maxlength="10" 
                                value="<?php echo $is_edit ? esc_attr($anggota->kode_pos) : ''; ?>">
+                        <small class="form-text text-muted">Maksimal 10 karakter</small>
                     </div>
                 </div>
 

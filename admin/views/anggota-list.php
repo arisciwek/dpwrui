@@ -56,10 +56,14 @@
                                     <?php endif; ?>
 
                                     <?php if(current_user_can('dpw_rui_update') || 
-                                          (current_user_can('dpw_rui_edit_own') && 
-                                           $item->created_by == get_current_user_id())): ?>
-                                        <a href="<?php echo admin_url('admin.php?page=dpw-rui&action=edit&id=' . $item->id); ?>"
-                                           class="button button-small">
+                                             (current_user_can('dpw_rui_edit_own') && 
+                                              $item->created_by == get_current_user_id())): ?>
+                                        <a href="<?php echo add_query_arg(array(
+                                            'page' => 'dpw-rui',
+                                            'action' => 'edit',
+                                            'id' => $item->id
+                                        ), admin_url('admin.php')); ?>"
+                                           class="button button-small" title="Edit">
                                             <i class="fas fa-edit"></i>
                                         </a>
                                     <?php endif; ?>
