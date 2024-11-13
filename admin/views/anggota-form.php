@@ -1,21 +1,18 @@
 <?php
 /**
  * Path: /wp-content/plugins/dpwrui/admin/views/anggota-form.php  
- * Version: 1.0.3
+ * Version: 1.0.4
  *
  * Changelog:
+ * 1.0.4
+ * - Fixed form action untuk proper redirect
+ * - Added form_source hidden field
+ * - Removed dynamic form action URL
+ * - Fixed nonce field implementation
+ * 
  * 1.0.3
- * - Fixed form action untuk handle add/edit dengan benar
- * - Fixed redirect url handling
- * - Improved error handling untuk validasi form
- * - Fixed hidden fields untuk routing
- * 
- * 1.0.2
- * - Added form validation
- * - Added nonce field
- * 
- * 1.0.1
- * - Initial form layout
+ * - Fixed validation
+ * - Added maxlength constraints
  */
 
 // Cek jika mode edit
@@ -38,11 +35,6 @@ if($is_edit) {
         wp_die(__('Anda tidak memiliki akses untuk mengubah data ini.'));
     }
 }
-
-// Set form action URL
-$form_action = $is_edit ? 
-    admin_url('admin.php?page=dpw-rui&action=edit&id=' . absint($_GET['id'])) : 
-    admin_url('admin.php?page=dpw-rui-add');
 ?>
 
 <div class="wrap">
@@ -59,8 +51,10 @@ $form_action = $is_edit ?
             </h6>
         </div>
         <div class="card-body">
-            <form method="post" action="<?php echo esc_url($form_action); ?>" class="needs-validation" novalidate>
+            <form method="post" action="" class="needs-validation" novalidate>
                 <?php wp_nonce_field('dpw_rui_add_anggota'); ?>
+                
+                <input type="hidden" name="form_source" value="<?php echo $is_edit ? 'edit' : 'add'; ?>">
                 
                 <?php if($is_edit): ?>
                     <input type="hidden" name="id" value="<?php echo $anggota->id; ?>">
@@ -81,7 +75,11 @@ $form_action = $is_edit ?
                 <div class="form-group row">
                     <label class="col-sm-2 col-form-label">Pimpinan <span class="text-danger">*</span></label>
                     <div class="col-sm-10">
-                        <input type="text" name="pimpinan" class="form-control" required
+                        <input type="text" 
+                               name="pimpinan" 
+                               class="form-control" 
+                               maxlength="100"
+                               required
                                value="<?php echo $is_edit ? esc_attr($anggota->pimpinan) : ''; ?>">
                         <div class="invalid-feedback">
                             Nama pimpinan wajib diisi
@@ -92,9 +90,11 @@ $form_action = $is_edit ?
                 <div class="form-group row">
                     <label class="col-sm-2 col-form-label">Alamat <span class="text-danger">*</span></label>
                     <div class="col-sm-10">
-                        <textarea name="alamat" class="form-control" rows="3" required><?php 
-                            echo $is_edit ? esc_textarea($anggota->alamat) : ''; 
-                        ?></textarea>
+                        <textarea name="alamat" 
+                                  class="form-control" 
+                                  rows="3" 
+                                  maxlength="255"
+                                  required><?php echo $is_edit ? esc_textarea($anggota->alamat) : ''; ?></textarea>
                         <div class="invalid-feedback">
                             Alamat wajib diisi
                         </div>
@@ -104,7 +104,11 @@ $form_action = $is_edit ?
                 <div class="form-group row">
                     <label class="col-sm-2 col-form-label">Kabupaten <span class="text-danger">*</span></label>
                     <div class="col-sm-10">
-                        <input type="text" name="kabupaten" class="form-control" required
+                        <input type="text" 
+                               name="kabupaten" 
+                               class="form-control" 
+                               maxlength="50"
+                               required
                                value="<?php echo $is_edit ? esc_attr($anggota->kabupaten) : ''; ?>">
                         <div class="invalid-feedback">
                             Kabupaten wajib diisi
@@ -127,7 +131,11 @@ $form_action = $is_edit ?
                 <div class="form-group row">
                     <label class="col-sm-2 col-form-label">Nomor Telpon <span class="text-danger">*</span></label>
                     <div class="col-sm-10">
-                        <input type="text" name="nomor_telpon" class="form-control" required
+                        <input type="text" 
+                               name="nomor_telpon" 
+                               class="form-control" 
+                               maxlength="20"
+                               required
                                value="<?php echo $is_edit ? esc_attr($anggota->nomor_telpon) : ''; ?>">
                         <div class="invalid-feedback">
                             Nomor telpon wajib diisi
@@ -138,7 +146,11 @@ $form_action = $is_edit ?
                 <div class="form-group row">
                     <label class="col-sm-2 col-form-label">Bidang Usaha <span class="text-danger">*</span></label>
                     <div class="col-sm-10">
-                        <input type="text" name="bidang_usaha" class="form-control" required
+                        <input type="text" 
+                               name="bidang_usaha" 
+                               class="form-control" 
+                               maxlength="100"
+                               required
                                value="<?php echo $is_edit ? esc_attr($anggota->bidang_usaha) : ''; ?>">
                         <div class="invalid-feedback">
                             Bidang usaha wajib diisi
@@ -149,7 +161,11 @@ $form_action = $is_edit ?
                 <div class="form-group row">
                     <label class="col-sm-2 col-form-label">Nomor AHU <span class="text-danger">*</span></label>
                     <div class="col-sm-10">
-                        <input type="text" name="nomor_ahu" class="form-control" required
+                        <input type="text" 
+                               name="nomor_ahu" 
+                               class="form-control" 
+                               maxlength="50"
+                               required
                                value="<?php echo $is_edit ? esc_attr($anggota->nomor_ahu) : ''; ?>">
                         <div class="invalid-feedback">
                             Nomor AHU wajib diisi
@@ -160,7 +176,10 @@ $form_action = $is_edit ?
                 <div class="form-group row">
                     <label class="col-sm-2 col-form-label">Jabatan</label>
                     <div class="col-sm-10">
-                        <input type="text" name="jabatan" class="form-control"
+                        <input type="text" 
+                               name="jabatan" 
+                               class="form-control"
+                               maxlength="50" 
                                value="<?php echo $is_edit ? esc_attr($anggota->jabatan) : ''; ?>">
                     </div>
                 </div>
@@ -168,7 +187,11 @@ $form_action = $is_edit ?
                 <div class="form-group row">
                     <label class="col-sm-2 col-form-label">NPWP <span class="text-danger">*</span></label>
                     <div class="col-sm-10">
-                        <input type="text" name="npwp" class="form-control" required
+                        <input type="text" 
+                               name="npwp" 
+                               class="form-control" 
+                               maxlength="30"
+                               required
                                value="<?php echo $is_edit ? esc_attr($anggota->npwp) : ''; ?>">
                         <div class="invalid-feedback">
                             NPWP wajib diisi

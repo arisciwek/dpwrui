@@ -138,52 +138,6 @@ class DPW_RUI {
         }
     }
 
-    public function display_anggota_page() {
-        if(!current_user_can('dpw_rui_view_list')) {
-            wp_die(__('Anda tidak memiliki akses ke halaman ini.'));
-        }
-
-        // Handle POST submission
-        if (isset($_POST['submit'])) {
-            $this->save_anggota();
-            return; // save_anggota() akan handle redirect
-        }
-
-        // Handle GET actions
-        $action = isset($_GET['action']) ? $_GET['action'] : 'list';
-        
-        switch($action) {
-            case 'view':
-                $this->display_detail_anggota();
-                break;
-                
-            case 'edit':
-                $this->display_edit_anggota();
-                break;
-                
-            case 'delete':
-                $this->handle_delete_anggota();
-                break;
-                
-            default:
-                $this->display_list_anggota();
-                break;
-        }
-    }
-
-    public function display_add_anggota_page() {
-        if(!current_user_can('dpw_rui_create')) {
-            wp_die(__('Anda tidak memiliki akses ke halaman ini.'));
-        }
-
-        if(isset($_POST['submit'])) {
-            $this->save_anggota();
-            return;
-        }
-
-        require_once DPW_RUI_PLUGIN_DIR . 'admin/views/anggota-form.php';
-    }
-
     // Definisikan konstanta untuk panjang maksimum field
     private $field_lengths = array(
         'nama_perusahaan' => 100,
@@ -198,6 +152,7 @@ class DPW_RUI {
         'npwp' => 30,
         'nomor_anggota' => 20
     );
+
 
     private function validate_field_length($data) {
         $errors = array();
@@ -225,7 +180,7 @@ class DPW_RUI {
         }
         return $data;
     }
-    
+
     private function save_anggota() {
         global $wpdb;
         
@@ -235,9 +190,10 @@ class DPW_RUI {
         }
 
         $table = $wpdb->prefix . 'dpw_rui_anggota';
+        $form_source = isset($_POST['form_source']) ? $_POST['form_source'] : '';
         
         // Check if edit mode
-        $is_edit = isset($_POST['id']) && !empty($_POST['id']);
+        $is_edit = $form_source === 'edit' && isset($_POST['id']) && !empty($_POST['id']);
         
         // Validate permissions
         if ($is_edit) {
@@ -325,10 +281,6 @@ class DPW_RUI {
             $data['created_at'] = current_time('mysql');
             $data['created_by'] = get_current_user_id();
 
-            // Log data before insert
-            error_log('Attempting to insert data:');
-            error_log(print_r($data, true));
-
             $result = $wpdb->insert($table, $data);
             
             if ($result === false) {
@@ -344,14 +296,69 @@ class DPW_RUI {
             $message = 1;
         }
 
-        // Redirect ke halaman detail anggota
-        wp_redirect(add_query_arg(array(
+        // Build redirect URL
+        $redirect_url = add_query_arg(array(
             'page' => 'dpw-rui',
             'action' => 'view',
             'id' => $redirect_id,
             'message' => $message
-        ), admin_url('admin.php')));
+        ), admin_url('admin.php'));
+
+        // Use meta refresh instead of wp_redirect
+        ?>
+        <div class="wrap">
+            <p>Menyimpan data... Jika tidak ada redirect otomatis, silakan klik <a href="<?php echo esc_url($redirect_url); ?>">di sini</a>.</p>
+            <meta http-equiv="refresh" content="0;url=<?php echo esc_url($redirect_url); ?>">
+        </div>
+        <?php
         exit;
+    }
+
+    public function display_add_anggota_page() {
+        if(!current_user_can('dpw_rui_create')) {
+            wp_die(__('Anda tidak memiliki akses ke halaman ini.'));
+        }
+
+        // Handle form submission
+        if(isset($_POST['submit'])) {
+            $this->save_anggota();
+            return;
+        }
+
+        require_once DPW_RUI_PLUGIN_DIR . 'admin/views/anggota-form.php';
+    }
+
+
+    public function display_anggota_page() {
+        if(!current_user_can('dpw_rui_view_list')) {
+            wp_die(__('Anda tidak memiliki akses ke halaman ini.'));
+        }
+
+        // Handle form submission
+        if (isset($_POST['submit'])) {
+            $this->save_anggota();
+            return;
+        }
+
+        $action = isset($_GET['action']) ? $_GET['action'] : 'list';
+        
+        switch($action) {
+            case 'view':
+                $this->display_detail_anggota();
+                break;
+                
+            case 'edit':
+                $this->display_edit_anggota();
+                break;
+                
+            case 'delete':
+                $this->handle_delete_anggota();
+                break;
+                
+            default:
+                $this->display_list_anggota();
+                break;
+        }
     }
 
     private function generate_member_number() {
@@ -378,6 +385,7 @@ class DPW_RUI {
         $this->settings->render_page();
     }
 
+
     private function display_detail_anggota() {
         if(!current_user_can('dpw_rui_read')) {
             wp_die(__('Anda tidak memiliki akses untuk melihat detail anggota.'));
@@ -397,6 +405,7 @@ class DPW_RUI {
 
         require_once DPW_RUI_PLUGIN_DIR . 'admin/views/anggota-detail.php';
     }
+
 
     private function display_edit_anggota() {
         if(!current_user_can('dpw_rui_update')) {
