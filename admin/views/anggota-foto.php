@@ -1,21 +1,17 @@
 <?php
 /**
  * Path: /wp-content/plugins/dpwrui/admin/views/anggota-foto.php
- * Version: 1.1.0
+ * Version: 1.2.0
  * 
  * Changelog:
- * 1.1.0
- * - Refactored to use new template structure
- * - Improved error handling and validation
- * - Added proper template loading
- * - Improved security checks
- * - Added constants for configuration
- * - Added proper action handling
- * - Improved file upload process
- * - Added proper transaction handling
- * - Added better feedback messages
+ * 1.2.0
+ * - Restructured layout grid using col-lg-5 and col-lg-7
+ * - Moved Card Informasi to upload-form.php
+ * - Fixed page header and message display positions
+ * - Added proper spacing between components
+ * - Improved responsive behavior 
  * 
- * 1.0.3
+ * 1.1.0 
  * - Previous version functionality
  */
 
@@ -44,6 +40,58 @@ global $dpw_rui_foto;
 if (!isset($dpw_rui_foto)) {
     require_once DPW_RUI_PLUGIN_DIR . 'includes/class-dpw-rui-foto.php';
     $dpw_rui_foto = new DPW_RUI_Foto();
+}
+
+// Handle photo upload
+if (isset($_POST['submit']) && check_admin_referer('dpw_rui_upload_foto_' . $anggota_id, 'dpw_rui_upload_nonce')) {
+    if (!isset($_FILES['foto']) || empty($_FILES['foto']['name'])) {
+        wp_die('No file uploaded');
+    }
+
+    $file = $_FILES['foto'];
+    
+    // Validate file type
+    if (!in_array($file['type'], array('image/jpeg', 'image/png', 'image/gif'))) {
+        wp_die('Invalid file type. Allowed: JPG, PNG, GIF');
+    }
+    
+    // Validate file size (1.8MB)
+    if ($file['size'] > 1887436) {
+        wp_die('File too large. Max: 1.8MB');
+    }
+
+    // Get existing photos count
+    $existing_photos = $dpw_rui_foto->get_member_photos($anggota_id);
+    if (count($existing_photos) >= 4) {
+        wp_die('Maximum photos limit reached (4)');
+    }
+
+    require_once(ABSPATH . 'wp-admin/includes/image.php');
+    require_once(ABSPATH . 'wp-admin/includes/file.php');
+    require_once(ABSPATH . 'wp-admin/includes/media.php');
+
+    // Upload file to WordPress media library
+    $attachment_id = media_handle_upload('foto', 0);
+    if (is_wp_error($attachment_id)) {
+        wp_die($attachment_id->get_error_message());
+    }
+
+    // Add photo record
+    $is_main = (count($existing_photos) == 0) ? 1 : 0;
+    $result = $dpw_rui_foto->add_photo($anggota_id, $attachment_id, $is_main);
+    
+    if (!$result) {
+        wp_delete_attachment($attachment_id, true);
+        wp_die('Failed to save photo record');
+    }
+
+    wp_redirect(add_query_arg(array(
+        'page' => 'dpw-rui',
+        'action' => 'foto',
+        'id' => $anggota_id,
+        'message' => 'uploaded'
+    ), admin_url('admin.php')));
+    exit;
 }
 
 // Get anggota data
@@ -160,7 +208,6 @@ if (isset($_POST['submit'])) {
         }
     }
 }
-
 ?>
 
 <div class="wrap">
@@ -179,16 +226,21 @@ if (isset($_POST['submit'])) {
     ?>
 
     <div class="row">
-        <div class="col-lg-8">
+        <div class="col-lg-4">
             <?php
-            // Display upload form
+            // Display upload form with info card
             $upload_data = array(
                 'anggota_id' => $anggota_id,
                 'existing_count' => $existing_count,
-                'max_photos' => DPW_RUI_MAX_PHOTOS
+                'max_photos' => DPW_RUI_MAX_PHOTOS,
+                'main_photo' => $dpw_rui_foto->get_main_photo($anggota_id)
             );
             $dpw_rui_foto->render_template('upload-form', $upload_data);
+            ?>
+        </div>
 
+        <div class="col-lg-8">
+            <?php
             // Display photo grid
             $grid_data = array(
                 'photos' => $photos,
@@ -197,50 +249,6 @@ if (isset($_POST['submit'])) {
             );
             $dpw_rui_foto->render_template('grid-manage', $grid_data);
             ?>
-        </div>
-
-        <div class="col-lg-4">
-            <div class="card shadow mb-4">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">Informasi</h6>
-                </div>
-                <div class="card-body">
-                    <div class="alert alert-info mb-3">
-                        <h6 class="alert-heading mb-2">
-                            <i class="fas fa-info-circle mr-1"></i>
-                            Ketentuan Foto:
-                        </h6>
-                        <ul class="mb-0 pl-3">
-                            <li>Maksimal <?php echo DPW_RUI_MAX_PHOTOS; ?> foto (1 utama + <?php echo DPW_RUI_MAX_PHOTOS - 1; ?> tambahan)</li>
-                            <li>Format: JPG, PNG, GIF</li>
-                            <li>Maksimal ukuran: 1.8 MB</li>
-                            <li>Foto pertama otomatis jadi foto utama</li>
-                        </ul>
-                    </div>
-
-                    <div class="foto-stats mb-3">
-                        <h6 class="font-weight-bold mb-2">Status Foto:</h6>
-                        <table class="table table-sm">
-                            <tr>
-                                <td>Total Foto</td>
-                                <td class="text-right"><?php echo $existing_count; ?> / <?php echo DPW_RUI_MAX_PHOTOS; ?></td>
-                            </tr>
-                            <tr>
-                                <td>Foto Utama</td>
-                                <td class="text-right">
-                                    <?php echo $dpw_rui_foto->get_main_photo($anggota_id) ? 
-                                        '<span class="text-success"><i class="fas fa-check-circle"></i> Ada</span>' : 
-                                        '<span class="text-danger"><i class="fas fa-times-circle"></i> Belum Ada</span>'; ?>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>Sisa Slot</td>
-                                <td class="text-right"><?php echo DPW_RUI_MAX_PHOTOS - $existing_count; ?></td>
-                            </tr>
-                        </table>
-                    </div>
-                </div>
-            </div>
         </div>
     </div>
 
