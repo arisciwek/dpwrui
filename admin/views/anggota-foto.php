@@ -1,20 +1,18 @@
 <?php
 /**
  * Path: /wp-content/plugins/dpwrui/admin/views/anggota-foto.php
- * Version: 1.0.3
+ * Version: 1.0.4
  * 
  * Changelog:
- * 1.0.3
- * - Fixed delete handler for main photo not executing
- * - Fixed confirmation dialog not triggering actual deletion
- * - Added proper delete handler logic
- * - Added proper redirect after successful deletion
- * - Added feedback message after deletion
- * - Improved error handling for deletion
- * - Added validation for main photo deletion
+ * 1.0.4
+ * - Removed duplicate confirmation dialog
+ * - Fixed redirect after deletion
+ * - Added proper success message display
+ * - Fixed blank page issue after deletion
+ * - Improved photo list refresh
  * 
- * 1.0.2
- * - Previous version functionality
+ * 1.0.3
+ * - Previous functionality
  */
 
 // Validasi akses
@@ -337,8 +335,7 @@ if(isset($_GET['delete'])) {
                                                     Jadikan Foto Utama
                                                 </a>
                                             <?php endif; ?>
-                                            
-                                            <?php if(!$photo->is_main || count($photos) > 1): ?>
+                                                                                        <?php if(!$photo->is_main || count($photos) > 1): ?>
                                                 <a href="<?php echo wp_nonce_url(
                                                     add_query_arg(
                                                         array(
@@ -349,10 +346,7 @@ if(isset($_GET['delete'])) {
                                                     ),
                                                     'dpw_rui_delete_foto_' . $photo->id
                                                 ); ?>"
-                                                   class="btn btn-sm btn-outline-danger"
-                                                   onclick="return confirm('<?php echo $photo->is_main ? 
-                                                       'Ini adalah foto utama. Jika dihapus, foto lain akan otomatis dijadikan foto utama. Lanjutkan?' : 
-                                                       'Yakin ingin menghapus foto ini?'; ?>');">
+                                                   class="btn btn-sm btn-outline-danger delete-photo">
                                                     Hapus Foto
                                                 </a>
                                             <?php endif; ?>
