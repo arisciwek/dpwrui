@@ -1,40 +1,53 @@
 <?php
 /**
 * Path: /wp-content/plugins/dpwrui/includes/class-dpw-rui-anggota.php
-* Version: 1.1.0
+* Version: 1.4.0
 * 
 * Changelog:
-* 1.1.0
-* - Fixed form submission handling and validation flow
-* - Added proper redirection after successful save
-* - Fixed validation context for both add and edit
-* - Improved error handling and messages
-* - Added explicit form action handling
-* - Fixed permission checking sequence
-* - Added proper nonce verification
-* - Added consistent success/error messages
+* 1.4.0
+* - Fixed foto action handling to properly display foto management page
+* - Ensured proper integration with existing DPW_RUI_Foto class
+* - Added global foto instance initialization
+* - Fixed permission checking for foto management
 * 
-* 1.0.0
-* - Initial version extracted from class-dpw-rui.php
+* 1.3.0
+* - Previous version functionality
 */
 
 class DPW_RUI_Anggota {
     private $wpdb;
     private $validation;
+    private $foto;
 
     public function __construct(DPW_RUI_Validation $validation) {
         global $wpdb;
         $this->wpdb = $wpdb;
         $this->validation = $validation;
+
+        // Get global foto instance if available
+        global $dpw_rui_foto;
+        $this->foto = $dpw_rui_foto;
     }
 
     public function handle_page_actions() {
-        // Check if it's a form submission first
-        if (isset($_POST['submit']) && isset($_POST['_wpnonce'])) {
-            if (!wp_verify_nonce($_POST['_wpnonce'], 'dpw_rui_add_anggota')) {
-                wp_die(__('Invalid nonce verification'));
+        // Check if it's a form submission
+        if (isset($_POST['submit'])) {
+            // Check form type and validate appropriate nonce
+            if (isset($_POST['form_type'])) {
+                switch($_POST['form_type']) {
+                    case 'add_anggota':
+                        if (!isset($_POST['_wpnonce']) || !wp_verify_nonce($_POST['_wpnonce'], 'dpw_rui_add_anggota')) {
+                            wp_die(__('Invalid nonce verification'));
+                        }
+                        return $this->save_anggota();
+                        
+                    case 'upload_foto':
+                        if (!isset($_POST['_wpnonce']) || !wp_verify_nonce($_POST['_wpnonce'], 'dpw_rui_upload_foto')) {
+                            wp_die(__('Invalid nonce verification'));
+                        }
+                        return $this->handle_foto_upload();
+                }
             }
-            return $this->save_anggota();
         }
 
         $action = isset($_GET['action']) ? $_GET['action'] : 'list';
@@ -52,11 +65,16 @@ class DPW_RUI_Anggota {
                 $this->handle_delete_anggota();
                 break;
                 
+            case 'foto':
+                $this->display_foto_anggota();
+                break;
+                
             default:
                 $this->display_list_anggota();
                 break;
         }
     }
+        
         /**
          * Save or update anggota data
          * 
@@ -248,4 +266,39 @@ class DPW_RUI_Anggota {
             require_once DPW_RUI_PLUGIN_DIR . 'admin/views/anggota-list.php';
         }
 
+        private function display_foto_anggota() {
+            $id = isset($_GET['id']) ? absint($_GET['id']) : 0;
+            
+            // Get anggota data
+            $anggota = $this->wpdb->get_row(
+                $this->wpdb->prepare(
+                    "SELECT * FROM {$this->wpdb->prefix}dpw_rui_anggota WHERE id = %d",
+                    $id
+                )
+            );
+
+            if(!$anggota) {
+                wp_die(__('Data anggota tidak ditemukan.'));
+            }
+
+            // Check permission
+            if(!current_user_can('dpw_rui_update') && 
+               (!current_user_can('dpw_rui_edit_own') || $anggota->created_by != get_current_user_id())) {
+                wp_die(__('Anda tidak memiliki akses untuk mengelola foto.'));
+            }
+
+            // Get photos
+            if ($this->foto) {
+                $photos = $this->foto->get_photos($id);
+            } else {
+                $photos = $this->wpdb->get_results(
+                    $this->wpdb->prepare(
+                        "SELECT * FROM {$this->wpdb->prefix}dpw_rui_anggota_foto WHERE anggota_id = %d ORDER BY is_main DESC, id ASC",
+                        $id
+                    )
+                );
+            }
+
+            require_once DPW_RUI_PLUGIN_DIR . 'admin/views/anggota-foto.php';
+        }
     }
