@@ -1,9 +1,15 @@
 <?php
 /**
  * Path: /wp-content/plugins/dpwrui/admin/settings.php
- * Version: 2.3.2
+ * Version: 2.3.3
  * 
  * Changelog:
+ * 2.3.3
+ * - Removed duplicate menu registration via add_settings_page()
+ * - Menu registration now fully handled by DPW_RUI_Menu class
+ * - Class now only handles settings logic and rendering
+ * - Fixed double menu issue
+ * 
  * 2.3.2
  * - Removed render logic (moved to general.php)
  * - Simplified to basic menu registration
@@ -23,24 +29,16 @@ class DPW_RUI_Settings {
             require_once DPW_RUI_PLUGIN_DIR . 'includes/class-dpw-rui-validation.php';
             $this->validation = new DPW_RUI_Validation();
         }
-
-        add_action('admin_menu', array($this, 'add_settings_page'));
+        
+        // No longer registering menu here - handled by DPW_RUI_Menu
     }
 
-    public function add_settings_page() {
-        add_submenu_page(
-            'dpw-rui', // Parent menu slug
-            'Pengaturan DPW RUI', // Page title
-            'Pengaturan', // Menu title
-            'manage_options', // Capability required
-            'dpw-rui-settings', // Menu slug
-            array($this, 'settings_page_callback') // Callback function
-        );
-    }
-
-    public function settings_page_callback() {
-        // Just load the general settings class which now handles all rendering
+    /**
+     * Callback for settings page render
+     * Called from DPW_RUI_Menu class
+     */
+    public function render_settings_page() {
         require_once DPW_RUI_PLUGIN_DIR . 'admin/general.php';
-        DPW_RUI_General_Settings::get_instance($this->validation);
+        DPW_RUI_General_Settings::get_instance($this->validation)->render_page();
     }
 }

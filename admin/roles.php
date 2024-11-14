@@ -168,32 +168,38 @@ class DPW_RUI_Roles_Settings {
             </div>
 
             <!-- Member Status Management Section -->
-            <div class="card bg-light mb-4">
-                <div class="card-body">
-                    <h6 class="card-title">
-                        <i class="fas fa-user-shield mr-2"></i>
-                        Keterangan Status Anggota:
-                    </h6>
-                    <ul class="list-unstyled mb-0">
-                        <li>
-                            <i class="fas fa-check-circle text-success mr-2"></i>
-                            <strong>Aktivasi Anggota:</strong> 
-                            Mengaktifkan anggota baru atau anggota yang dinonaktifkan
-                        </li>
-                        <li>
-                            <i class="fas fa-times-circle text-danger mr-2"></i>
-                            <strong>Nonaktifkan Anggota:</strong>
-                            Menonaktifkan anggota yang sudah tidak aktif
-                        </li>
-                        <li>
-                            <i class="fas fa-cogs text-primary mr-2"></i>
-                            <strong>Kelola Status:</strong>
-                            Melihat history perubahan status dan alasan perubahan
-                        </li>
-                    </ul>
-                </div>
-            </div>
 
+            <div class="container-fluid p-0">
+                <div class="row">
+                        <div class="card col-12 bg-light mb-4">
+                            <div class="card-body">
+                                <h6 class="card-title">
+                                    <i class="fas fa-user-shield mr-2"></i>
+                                    Keterangan Status Anggota:
+                                </h6>
+                                <ul class="list-unstyled mb-0">
+                                    <li>
+                                        <i class="fas fa-check-circle text-success mr-2"></i>
+                                        <strong>Aktivasi Anggota:</strong> 
+                                        Mengaktifkan anggota baru atau anggota yang dinonaktifkan
+                                    </li>
+                                    <li>
+                                        <i class="fas fa-times-circle text-danger mr-2"></i>
+                                        <strong>Nonaktifkan Anggota:</strong>
+                                        Menonaktifkan anggota yang sudah tidak aktif
+                                    </li>
+                                    <li>
+                                        <i class="fas fa-cogs text-primary mr-2"></i>
+                                        <strong>Kelola Status:</strong>
+                                        Melihat history perubahan status dan alasan perubahan
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+
+
+                </div>
+        </div>
             <div class="form-actions">
                 <?php submit_button('Simpan Pengaturan', 'primary', 'submit', false); ?>
                 <button type="button" class="button button-secondary" id="resetDefaults">

@@ -48,7 +48,7 @@ class DPW_RUI_Menu {
         add_menu_page(
             'DPW RUI',
             'DPW RUI',
-            'read',
+            'dpw_rui_view_list',  // Changed permission level
             'dpw-rui', // Force this to be member list
             array($this, 'display_anggota_page'),
             'dashicons-groups',
@@ -60,7 +60,7 @@ class DPW_RUI_Menu {
             'dpw-rui',
             'Daftar Anggota',
             'Daftar Anggota',
-            'read',
+            'dpw_rui_view_list',  // Changed permission level
             'dpw-rui', // Harus sama dengan menu utama
             array($this, 'display_anggota_page')
         );

@@ -1,18 +1,18 @@
 <?php
 /**
  * Path: /wp-content/plugins/dpwrui/admin/views/anggota-form.php  
- * Version: 1.0.4
+ * Version: 1.0.5
  *
  * Changelog:
- * 1.0.4
- * - Fixed form action untuk proper redirect
- * - Added form_source hidden field
- * - Removed dynamic form action URL
+ * 1.0.5
+ * - Added explicit form action URL
  * - Fixed nonce field implementation
+ * - Improved form validation
+ * - Added proper error display
+ * - Fixed redirect handling
  * 
- * 1.0.3
- * - Fixed validation
- * - Added maxlength constraints
+ * 1.0.4
+ * - Previous version functionality
  */
 
 // Cek jika mode edit
@@ -35,6 +35,9 @@ if($is_edit) {
         wp_die(__('Anda tidak memiliki akses untuk mengubah data ini.'));
     }
 }
+
+// Get error messages if any
+$error_messages = get_settings_errors('dpw_rui_messages');
 ?>
 
 <div class="wrap">
@@ -44,6 +47,14 @@ if($is_edit) {
     
     <hr class="wp-header-end">
 
+    <?php if (!empty($error_messages)): ?>
+        <?php foreach($error_messages as $error): ?>
+            <div class="notice notice-<?php echo $error['type']; ?> is-dismissible">
+                <p><?php echo $error['message']; ?></p>
+            </div>
+        <?php endforeach; ?>
+    <?php endif; ?>
+
     <div class="card shadow mb-4">
         <div class="card-header py-3">
             <h6 class="m-0 font-weight-bold text-primary">
@@ -51,8 +62,13 @@ if($is_edit) {
             </h6>
         </div>
         <div class="card-body">
-            <form method="post" action="" class="needs-validation" novalidate>
-                <?php wp_nonce_field('dpw_rui_add_anggota'); ?>
+            <form method="post" 
+                  action="<?php echo admin_url('admin-post.php'); ?>" 
+                  class="needs-validation" 
+                  novalidate>
+                
+                <input type="hidden" name="action" value="dpw_rui_save_anggota">
+                <?php wp_nonce_field('dpw_rui_save_anggota', 'dpw_rui_nonce'); ?>
                 
                 <input type="hidden" name="form_source" value="<?php echo $is_edit ? 'edit' : 'add'; ?>">
                 
