@@ -1,247 +1,162 @@
 <?php
 /**
  * Path: /wp-content/plugins/dpwrui/admin/views/anggota-foto.php
- * Version: 1.0.4
+ * Version: 1.1.0
  * 
  * Changelog:
- * 1.0.4
- * - Removed duplicate confirmation dialog
- * - Fixed redirect after deletion
- * - Added proper success message display
- * - Fixed blank page issue after deletion
- * - Improved photo list refresh
+ * 1.1.0
+ * - Refactored to use new template structure
+ * - Improved error handling and validation
+ * - Added proper template loading
+ * - Improved security checks
+ * - Added constants for configuration
+ * - Added proper action handling
+ * - Improved file upload process
+ * - Added proper transaction handling
+ * - Added better feedback messages
  * 
  * 1.0.3
- * - Previous functionality
+ * - Previous version functionality
  */
 
-// Validasi akses
 if (!defined('ABSPATH')) {
     exit;
 }
 
-// Initialize variables
-$success = false;
-$errors = array();
+// Configuration
+define('DPW_RUI_MAX_PHOTOS', 4); // 1 main + 3 additional
+define('DPW_RUI_MAX_FILESIZE', 1887436); // 1.8MB in bytes
 
-$id = absint($_GET['id']);
+// Initialize variables
+$errors = array();
+$notices = array();
+$success = false;
+$success_message = '';
+
+// Get anggota ID and validate
+$anggota_id = isset($_GET['id']) ? absint($_GET['id']) : 0;
+if (!$anggota_id) {
+    wp_die(__('ID Anggota tidak valid.'));
+}
+
+// Get DPW_RUI_Foto instance
+global $dpw_rui_foto;
+if (!isset($dpw_rui_foto)) {
+    require_once DPW_RUI_PLUGIN_DIR . 'includes/class-dpw-rui-foto.php';
+    $dpw_rui_foto = new DPW_RUI_Foto();
+}
 
 // Get anggota data
 global $wpdb;
-$anggota = $wpdb->get_row(
-    $wpdb->prepare(
-        "SELECT * FROM {$wpdb->prefix}dpw_rui_anggota WHERE id = %d",
-        $id
-    )
-);
+$anggota = $wpdb->get_row($wpdb->prepare(
+    "SELECT * FROM {$wpdb->prefix}dpw_rui_anggota WHERE id = %d",
+    $anggota_id
+));
 
-if(!$anggota) {
+if (!$anggota) {
     wp_die(__('Data anggota tidak ditemukan.'));
 }
 
-// Cek permission
-if(!current_user_can('dpw_rui_update') && 
-   (!current_user_can('dpw_rui_edit_own') || $anggota->created_by != get_current_user_id())) {
+// Check permissions
+$can_manage = $dpw_rui_foto->can_manage_photo($anggota_id);
+if (!$can_manage) {
     wp_die(__('Anda tidak memiliki akses untuk mengelola foto.'));
 }
 
 // Get existing photos
-$photos = $wpdb->get_results(
-    $wpdb->prepare(
-        "SELECT * FROM {$wpdb->prefix}dpw_rui_anggota_foto WHERE anggota_id = %d ORDER BY is_main DESC, id ASC",
-        $id
-    )
-);
+$photos = $dpw_rui_foto->get_member_photos($anggota_id);
+$existing_count = count($photos);
 
-// Handle form submission
-if(isset($_POST['submit'])) {
-    // Verify upload nonce
-    if (!check_admin_referer('dpw_rui_upload_foto_' . $id, 'dpw_rui_upload_nonce')) {
-        wp_die(__('Invalid nonce verification for photo upload'));
-    }
-    
-    // Validasi jumlah foto existing
-    $existing_count = count($photos);
-    $max_additional = 3;
-    
-    if($existing_count >= ($max_additional + 1)) {
-        $errors[] = 'Maksimal foto yang diperbolehkan adalah 1 foto utama dan ' . $max_additional . ' foto tambahan.';
-    }
-    
-    // Cek apakah ada file yang diupload
-    if(empty($_FILES['foto']['name'])) {
-        $errors[] = 'Pilih file foto untuk diupload.';
-    } else {
-        $file = $_FILES['foto'];
-        
-        // Validasi tipe file
-        $allowed_types = array('image/jpeg', 'image/png', 'image/gif');
-        if(!in_array($file['type'], $allowed_types)) {
-            $errors[] = 'Tipe file tidak didukung. Format yang diizinkan: JPG, PNG, GIF';
-        }
-        
-        // Validasi ukuran (1.8MB = 1887436.8 bytes)
-        if($file['size'] > 1887436) {
-            $errors[] = 'Ukuran file terlalu besar. Maksimal 1.8 MB.';
-        }
-        
-        // Jika tidak ada error, proses upload
-        if(empty($errors)) {
-            $_POST['is_dpw_rui_upload'] = true; // Flag for custom upload dir
-            
-            require_once(ABSPATH . 'wp-admin/includes/image.php');
-            require_once(ABSPATH . 'wp-admin/includes/file.php');
-            require_once(ABSPATH . 'wp-admin/includes/media.php');
-            
-            $attachment_id = media_handle_upload('foto', 0);
-            
-            if(is_wp_error($attachment_id)) {
-                $errors[] = $attachment_id->get_error_message();
-            } else {
-                // Set as main photo if no photos exist
-                $is_main = ($existing_count == 0) ? 1 : 0;
+// Handle actions
+$action = isset($_GET['action']) ? $_GET['action'] : '';
+if ($action) {
+    switch($action) {
+        case 'delete':
+            if (isset($_GET['delete']) && isset($_GET['_wpnonce'])) {
+                $photo_id = absint($_GET['delete']);
                 
-                // Insert to custom table
-                $result = $wpdb->insert(
-                    $wpdb->prefix . 'dpw_rui_anggota_foto',
-                    array(
-                        'anggota_id' => $id,
-                        'attachment_id' => $attachment_id,
-                        'is_main' => $is_main,
-                        'created_at' => current_time('mysql'),
-                        'created_by' => get_current_user_id()
-                    ),
-                    array('%d', '%d', '%d', '%s', '%d')
-                );
+                // Verify nonce
+                if (!wp_verify_nonce($_GET['_wpnonce'], 'dpw_rui_delete_foto_' . $photo_id)) {
+                    $errors[] = 'Invalid security token.';
+                    break;
+                }
                 
-                if($result === false) {
-                    $errors[] = 'Gagal menyimpan data foto ke database.';
-                    wp_delete_attachment($attachment_id, true);
-                } else {
+                // Delete photo
+                if ($dpw_rui_foto->delete_photo($photo_id, $anggota_id)) {
                     $success = true;
+                    $success_message = 'Foto berhasil dihapus.';
                     
-                    // Refresh photos list
-                    $photos = $wpdb->get_results(
-                        $wpdb->prepare(
-                            "SELECT * FROM {$wpdb->prefix}dpw_rui_anggota_foto WHERE anggota_id = %d ORDER BY is_main DESC, id ASC",
-                            $id
-                        )
-                    );
+                    // Refresh photos
+                    $photos = $dpw_rui_foto->get_member_photos($anggota_id);
+                    $existing_count = count($photos);
+                } else {
+                    $errors = array_merge($errors, $dpw_rui_foto->get_errors());
                 }
             }
-        }
+            break;
+
+        case 'set_main':
+            if (isset($_GET['set_main']) && isset($_GET['_wpnonce'])) {
+                $photo_id = absint($_GET['set_main']);
+                
+                // Verify nonce
+                if (!wp_verify_nonce($_GET['_wpnonce'], 'dpw_rui_set_main_foto_' . $photo_id)) {
+                    $errors[] = 'Invalid security token.';
+                    break;
+                }
+                
+                // Set as main photo
+                if ($dpw_rui_foto->set_main_photo($photo_id, $anggota_id)) {
+                    $success = true;
+                    $success_message = 'Foto utama berhasil diubah.';
+                    
+                    // Refresh photos
+                    $photos = $dpw_rui_foto->get_member_photos($anggota_id);
+                } else {
+                    $errors = array_merge($errors, $dpw_rui_foto->get_errors());
+                }
+            }
+            break;
     }
 }
 
-// Handle set main photo
-if(isset($_GET['set_main'])) {
-    $photo_id = absint($_GET['set_main']);
-    
-    // Perbaikan verifikasi nonce untuk set main
-    if (!isset($_GET['_wpnonce']) || 
-        !wp_verify_nonce($_GET['_wpnonce'], 'dpw_rui_set_main_foto_' . $photo_id)) {
-        wp_die(__('Invalid nonce verification for setting main photo'));
+// Handle photo upload
+if (isset($_POST['submit'])) {
+    // Verify nonce
+    if (!check_admin_referer('dpw_rui_upload_foto_' . $anggota_id, 'dpw_rui_upload_nonce')) {
+        wp_die(__('Invalid security token.'));
     }
     
-    // Pastikan anggota_id disertakan dan cocok
-    $anggota_id = isset($_GET['anggota_id']) ? absint($_GET['anggota_id']) : 0;
-    if ($anggota_id !== $id) {
-        wp_die(__('Invalid member verification'));
-    }
-    
-    // Sisanya sama seperti sebelumnya...
-}
-
-// Handle delete photo
-if(isset($_GET['delete'])) {
-    $photo_id = absint($_GET['delete']);
-    
-    // Verifikasi nonce untuk delete
-    if (!isset($_GET['_wpnonce']) || 
-        !wp_verify_nonce($_GET['_wpnonce'], 'dpw_rui_delete_foto_' . $photo_id)) {
-        wp_die(__('Invalid nonce verification for photo deletion'));
-    }
-    
-    // Pastikan anggota_id disertakan dan cocok
-    $anggota_id = isset($_GET['anggota_id']) ? absint($_GET['anggota_id']) : 0;
-    if ($anggota_id !== $id) {
-        wp_die(__('Invalid member verification'));
-    }
-
-    // Get photo info
-    $photo = $wpdb->get_row($wpdb->prepare(
-        "SELECT * FROM {$wpdb->prefix}dpw_rui_anggota_foto WHERE id = %d AND anggota_id = %d",
-        $photo_id,
-        $anggota_id
-    ));
-
-    if ($photo) {
-        // Start transaction
-        $wpdb->query('START TRANSACTION');
-
-        try {
-            // Delete from media library
-            $media_deleted = wp_delete_attachment($photo->attachment_id, true);
+    // Check max photos limit
+    if ($existing_count >= DPW_RUI_MAX_PHOTOS) {
+        $errors[] = sprintf(
+            'Maksimal foto yang diperbolehkan adalah 1 foto utama dan %d foto tambahan.',
+            DPW_RUI_MAX_PHOTOS - 1
+        );
+    } else {
+        // Handle file upload
+        $attachment_id = $dpw_rui_foto->handle_file_upload('foto', $anggota_id);
+        
+        if (is_wp_error($attachment_id)) {
+            $errors[] = $attachment_id->get_error_message();
+        } else {
+            // Set as main if no photos exist
+            $is_main = ($existing_count == 0) ? 1 : 0;
             
-            if ($media_deleted === false) {
-                throw new Exception('Gagal menghapus file foto');
+            // Add photo record
+            if ($dpw_rui_foto->add_photo($anggota_id, $attachment_id, $is_main)) {
+                $success = true;
+                $success_message = 'Foto berhasil diupload.';
+                
+                // Refresh photos
+                $photos = $dpw_rui_foto->get_member_photos($anggota_id);
+                $existing_count = count($photos);
+            } else {
+                $errors = array_merge($errors, $dpw_rui_foto->get_errors());
+                
+                // Clean up attachment if failed
+                wp_delete_attachment($attachment_id, true);
             }
-
-            // Delete from custom table
-            $deleted = $wpdb->delete(
-                $wpdb->prefix . 'dpw_rui_anggota_foto',
-                array('id' => $photo_id),
-                array('%d')
-            );
-
-            if ($deleted === false) {
-                throw new Exception('Gagal menghapus data foto dari database');
-            }
-
-            // If this was main photo, set new main photo
-            if ($photo->is_main) {
-                $new_main = $wpdb->get_row($wpdb->prepare(
-                    "SELECT id FROM {$wpdb->prefix}dpw_rui_anggota_foto 
-                     WHERE anggota_id = %d AND id != %d 
-                     ORDER BY id ASC LIMIT 1",
-                    $anggota_id,
-                    $photo_id
-                ));
-
-                if ($new_main) {
-                    $updated = $wpdb->update(
-                        $wpdb->prefix . 'dpw_rui_anggota_foto',
-                        array('is_main' => 1),
-                        array('id' => $new_main->id),
-                        array('%d'),
-                        array('%d')
-                    );
-
-                    if ($updated === false) {
-                        throw new Exception('Gagal mengatur foto utama baru');
-                    }
-                }
-            }
-
-            // Commit transaction
-            $wpdb->query('COMMIT');
-
-            // Set success message and redirect
-            $redirect_url = add_query_arg(
-                array(
-                    'page' => 'dpw-rui',
-                    'action' => 'foto',
-                    'id' => $id,
-                    'deleted' => '1'
-                ),
-                admin_url('admin.php')
-            );
-            wp_redirect($redirect_url);
-            exit;
-
-        } catch (Exception $e) {
-            $wpdb->query('ROLLBACK');
-            $errors[] = $e->getMessage();
         }
     }
 }
@@ -251,286 +166,88 @@ if(isset($_GET['delete'])) {
 <div class="wrap">
     <h1 class="wp-heading-inline">Kelola Foto Anggota</h1>
     <hr class="wp-header-end">
-    
-    <?php if(!empty($errors)): ?>
-        <div class="notice notice-error is-dismissible">
-            <?php foreach($errors as $error): ?>
-                <p><?php echo esc_html($error); ?></p>
-            <?php endforeach; ?>
-        </div>
-    <?php endif; ?>
-    
-    <?php if($success): ?>
-        <div class="notice notice-success is-dismissible">
-            <p>Perubahan berhasil disimpan.</p>
-        </div>
-    <?php endif; ?>
-    
+
+    <?php
+    // Display messages
+    $message_data = array(
+        'errors' => $errors,
+        'success' => $success,
+        'success_message' => $success_message,
+        'notices' => $notices
+    );
+    $dpw_rui_foto->render_template('message-display', $message_data);
+    ?>
+
     <div class="row">
         <div class="col-lg-8">
-            <div class="card col-lg-12 shadow mb-4">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">Upload Foto</h6>
-                </div>
-                <div class="card-body">
-                    <?php if(count($photos) >= 4): ?>
-                        <div class="alert alert-warning">
-                            Jumlah foto maksimal sudah tercapai (1 foto utama + 3 foto tambahan).
-                        </div>
-                    <?php else: ?>
-                        <form method="post" enctype="multipart/form-data">
-                            <?php wp_nonce_field('dpw_rui_upload_foto_' . $id, 'dpw_rui_upload_nonce'); ?>
-                            
-                            <div class="form-group">
-                                <label for="foto">Pilih Foto</label>
-                                <input type="file" name="foto" id="foto" class="form-control-file" accept="image/*" required>
-                                <small class="form-text text-muted">
-                                    Format yang didukung: JPG, PNG, GIF. Maksimal 1.8 MB.
-                                    <?php if(empty($photos)): ?>
-                                        <br>Foto pertama yang diupload akan menjadi foto utama.
-                                    <?php endif; ?>
-                                </small>
-                            </div>
-                            
-                            <button type="submit" name="submit" class="btn btn-primary">
-                                <i class="fas fa-upload mr-1"></i> Upload Foto
-                            </button>
-                        </form>
-                    <?php endif; ?>
-                </div>
-            </div>
+            <?php
+            // Display upload form
+            $upload_data = array(
+                'anggota_id' => $anggota_id,
+                'existing_count' => $existing_count,
+                'max_photos' => DPW_RUI_MAX_PHOTOS
+            );
+            $dpw_rui_foto->render_template('upload-form', $upload_data);
 
-            <div class="card col-lg-12 shadow mb-4">
+            // Display photo grid
+            $grid_data = array(
+                'photos' => $photos,
+                'anggota_id' => $anggota_id,
+                'can_manage' => $can_manage
+            );
+            $dpw_rui_foto->render_template('grid-manage', $grid_data);
+            ?>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card shadow mb-4">
                 <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">Foto Yang Sudah Diupload</h6>
+                    <h6 class="m-0 font-weight-bold text-primary">Informasi</h6>
                 </div>
                 <div class="card-body">
-                    <?php if(empty($photos)): ?>
-                        <div class="alert alert-info">
-                            Belum ada foto yang diupload. Upload minimal 1 foto utama.
-                        </div>
-                    <?php else: ?>
-                        <div class="row">
-                            <?php foreach($photos as $photo): ?>
-                                <div class="col-md-3 mb-4">
-                                    <div class="card h-100">
-                                        <img src="<?php echo esc_url(wp_get_attachment_url($photo->attachment_id)); ?>" 
-                                             class="card-img-top"
-                                             alt="<?php echo $photo->is_main ? 'Foto Utama' : 'Foto Tambahan'; ?>">
-                                        <div class="card-body p-2 text-center">
-                                            <?php if($photo->is_main): ?>
-                                                <span class="badge badge-primary mb-2">Foto Utama</span>
-                                            <?php else: ?>
-                                                <a href="<?php echo wp_nonce_url(
-                                                    add_query_arg(
-                                                        array(
-                                                            'set_main' => $photo->id,
-                                                            'anggota_id' => $id
-                                                        ),
-                                                        admin_url('admin.php?page=dpw-rui&action=foto&id=' . $id)
-                                                    ),
-                                                    'dpw_rui_set_main_foto_' . $photo->id
-                                                ); ?>" 
-                                                   class="btn btn-sm btn-outline-primary mb-2">
-                                                    Jadikan Foto Utama
-                                                </a>
-                                            <?php endif; ?>
-                                                                                        <?php if(!$photo->is_main || count($photos) > 1): ?>
-                                                <a href="<?php echo wp_nonce_url(
-                                                    add_query_arg(
-                                                        array(
-                                                            'delete' => $photo->id,
-                                                            'anggota_id' => $id
-                                                        ),
-                                                        admin_url('admin.php?page=dpw-rui&action=foto&id=' . $id)
-                                                    ),
-                                                    'dpw_rui_delete_foto_' . $photo->id
-                                                ); ?>"
-                                                   class="btn btn-sm btn-outline-danger delete-photo">
-                                                    Hapus Foto
-                                                </a>
-                                            <?php endif; ?>
-                                        </div>
-                                    </div>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
-                    <?php endif; ?>
+                    <div class="alert alert-info mb-3">
+                        <h6 class="alert-heading mb-2">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            Ketentuan Foto:
+                        </h6>
+                        <ul class="mb-0 pl-3">
+                            <li>Maksimal <?php echo DPW_RUI_MAX_PHOTOS; ?> foto (1 utama + <?php echo DPW_RUI_MAX_PHOTOS - 1; ?> tambahan)</li>
+                            <li>Format: JPG, PNG, GIF</li>
+                            <li>Maksimal ukuran: 1.8 MB</li>
+                            <li>Foto pertama otomatis jadi foto utama</li>
+                        </ul>
+                    </div>
+
+                    <div class="foto-stats mb-3">
+                        <h6 class="font-weight-bold mb-2">Status Foto:</h6>
+                        <table class="table table-sm">
+                            <tr>
+                                <td>Total Foto</td>
+                                <td class="text-right"><?php echo $existing_count; ?> / <?php echo DPW_RUI_MAX_PHOTOS; ?></td>
+                            </tr>
+                            <tr>
+                                <td>Foto Utama</td>
+                                <td class="text-right">
+                                    <?php echo $dpw_rui_foto->get_main_photo($anggota_id) ? 
+                                        '<span class="text-success"><i class="fas fa-check-circle"></i> Ada</span>' : 
+                                        '<span class="text-danger"><i class="fas fa-times-circle"></i> Belum Ada</span>'; ?>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Sisa Slot</td>
+                                <td class="text-right"><?php echo DPW_RUI_MAX_PHOTOS - $existing_count; ?></td>
+                            </tr>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
     <div class="mt-4">
-        <a href="<?php echo admin_url('admin.php?page=dpw-rui&action=view&id=' . $id); ?>" 
+        <a href="<?php echo admin_url('admin.php?page=dpw-rui&action=view&id=' . $anggota_id); ?>" 
            class="btn btn-secondary">
             <i class="fas fa-arrow-left mr-1"></i> Kembali ke Detail Anggota
         </a>
     </div>
 </div>
-
-<?php
-// Auto select new main photo after deletion if needed
-function dpw_rui_handle_main_photo_deletion($anggota_id) {
-    global $wpdb;
-    
-    // Check if there are any photos left
-    $remaining_photos = $wpdb->get_results($wpdb->prepare(
-        "SELECT * FROM {$wpdb->prefix}dpw_rui_anggota_foto 
-         WHERE anggota_id = %d AND is_main = 0 
-         ORDER BY id ASC",
-        $anggota_id
-    ));
-    
-    if (!empty($remaining_photos)) {
-        // Set the first remaining photo as main
-        $wpdb->update(
-            $wpdb->prefix . 'dpw_rui_anggota_foto',
-            array('is_main' => 1),
-            array(
-                'id' => $remaining_photos[0]->id,
-                'anggota_id' => $anggota_id
-            ),
-            array('%d'),
-            array('%d', '%d')
-        );
-        
-        return true;
-    }
-    
-    return false;
-}
-
-// Add JavaScript for handling photo actions
-?>
-<script type="text/javascript">
-jQuery(document).ready(function($) {
-    // File input handler tetap sama
-
-    // Update delete photo confirmation
-    $('.btn-outline-danger').on('click', function(e) {
-        e.preventDefault(); // Prevent default action first
-        
-        var $this = $(this);
-        var isMain = $this.closest('.card').find('.badge-primary').length > 0;
-        var message = isMain ? 
-            'Ini adalah foto utama. Jika dihapus, foto lain akan otomatis dijadikan foto utama. Lanjutkan?' : 
-            'Yakin ingin menghapus foto ini?';
-        
-        if (confirm(message)) {
-            // If confirmed, proceed with the deletion
-            window.location.href = $this.attr('href');
-        }
-    });
-
-    // Rest of the code remains the same
-});
-</script>
-<?php
-
-// Show success message for deletion
-if (isset($_GET['deleted']) && $_GET['deleted'] === '1') {
-    ?>
-    <div class="notice notice-success is-dismissible">
-        <p>Foto berhasil dihapus.</p>
-    </div>
-    <?php
-}
-
-// Handle AJAX response for photo actions if needed
-add_action('wp_ajax_dpw_rui_handle_photo_action', 'dpw_rui_handle_photo_action');
-function dpw_rui_handle_photo_action() {
-    check_ajax_referer('dpw_rui_photo_action', 'nonce');
-    
-    $action = isset($_POST['photo_action']) ? sanitize_text_field($_POST['photo_action']) : '';
-    $photo_id = isset($_POST['photo_id']) ? absint($_POST['photo_id']) : 0;
-    $anggota_id = isset($_POST['anggota_id']) ? absint($_POST['anggota_id']) : 0;
-    
-    if (!$photo_id || !$anggota_id) {
-        wp_send_json_error('Invalid parameters');
-    }
-    
-    global $wpdb;
-    
-    switch ($action) {
-        case 'set_main':
-            // Reset all photos to non-main
-            $wpdb->update(
-                $wpdb->prefix . 'dpw_rui_anggota_foto',
-                array('is_main' => 0),
-                array('anggota_id' => $anggota_id),
-                array('%d'),
-                array('%d')
-            );
-            
-            // Set selected photo as main
-            $result = $wpdb->update(
-                $wpdb->prefix . 'dpw_rui_anggota_foto',
-                array('is_main' => 1),
-                array('id' => $photo_id),
-                array('%d'),
-                array('%d')
-            );
-            
-            if ($result !== false) {
-                wp_send_json_success('Foto utama berhasil diubah');
-            }
-            break;
-            
-        case 'delete':
-            $photo = $wpdb->get_row($wpdb->prepare(
-                "SELECT * FROM {$wpdb->prefix}dpw_rui_anggota_foto WHERE id = %d AND anggota_id = %d",
-                $photo_id,
-                $anggota_id
-            ));
-            
-            if ($photo) {
-                // Delete from media library
-                wp_delete_attachment($photo->attachment_id, true);
-                
-                // Delete from custom table
-                $result = $wpdb->delete(
-                    $wpdb->prefix . 'dpw_rui_anggota_foto',
-                    array('id' => $photo_id),
-                    array('%d')
-                );
-                
-                if ($result !== false) {
-                    // If this was the main photo, set a new one
-                    if ($photo->is_main) {
-                        dpw_rui_handle_main_photo_deletion($anggota_id);
-                    }
-                    
-                    wp_send_json_success('Foto berhasil dihapus');
-                }
-            }
-            break;
-    }
-    
-    wp_send_json_error('Gagal melakukan aksi');
-}
-
-// Register and localize script for AJAX
-add_action('admin_enqueue_scripts', 'dpw_rui_enqueue_photo_scripts');
-function dpw_rui_enqueue_photo_scripts() {
-    wp_enqueue_script(
-        'dpw-rui-photo-handler',
-        plugins_url('js/foto.js', dirname(__FILE__)),
-        array('jquery'),
-        '1.0.2',
-        true
-    );
-    
-    wp_localize_script('dpw-rui-photo-handler', 'dpwRuiPhoto', array(
-        'ajaxurl' => admin_url('admin-ajax.php'),
-        'nonce' => wp_create_nonce('dpw_rui_photo_action'),
-        'messages' => array(
-            'delete_confirm' => 'Yakin ingin menghapus foto ini?',
-            'delete_main_confirm' => 'Ini adalah foto utama. Jika dihapus, foto lain akan otomatis dijadikan foto utama. Lanjutkan?',
-            'set_main_confirm' => 'Jadikan ini sebagai foto utama?',
-            'no_file' => 'Pilih file foto untuk diupload.',
-            'file_too_large' => 'Ukuran file terlalu besar. Maksimal 1.8 MB.',
-            'invalid_type' => 'Tipe file tidak didukung. Format yang diizinkan: JPG, PNG, GIF'
-        )
-    ));
-}

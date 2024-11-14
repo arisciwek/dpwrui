@@ -1,6 +1,15 @@
 /**
  * Path: /wp-content/plugins/dpwrui/admin/js/foto.js
- * Version: 1.0.0
+ * Version: 1.0.1
+ * 
+ * Changelog:
+ * 1.0.1
+ * - Updated delete photo confirmation handler to handle main photo case
+ * - Improved confirmation message logic
+ * - No other functionality changes
+ * 
+ * 1.0.0
+ * - Initial version
  */
 
 jQuery(document).ready(function($) {
@@ -82,10 +91,18 @@ jQuery(document).ready(function($) {
         }
     });
     
-    // Delete photo confirmation
+    // Delete photo confirmation - Updated handler
     $('.delete-photo').on('click', function(e) {
-        if(!confirm('Yakin ingin menghapus foto ini?')) {
-            e.preventDefault();
+        e.preventDefault();
+        
+        var $this = $(this);
+        var isMain = $this.closest('.card').find('.badge-primary').length > 0;
+        var message = isMain ? 
+            'Ini adalah foto utama. Jika dihapus, foto lain akan otomatis dijadikan foto utama. Lanjutkan?' : 
+            'Yakin ingin menghapus foto ini?';
+        
+        if (confirm(message)) {
+            window.location.href = $this.attr('href');
         }
     });
 });
