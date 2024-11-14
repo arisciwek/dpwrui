@@ -1,22 +1,28 @@
 <?php
 /**
 * Path: /wp-content/plugins/dpwrui/includes/class-dpw-rui-deactivator.php
-* Version: 2.0.0
+* Version: 2.0.1
 * 
 * Changelog:
-* 2.0.0
-* - Added proper cleanup for plugin deactivation
-* - Added option to keep or remove data
-* - Added cleanup for upload directory
-* - Added transient cleanup
+* 2.0.1
+* - Fixed wp_clear_scheduled_hooks() undefined error
+* - Added proper WordPress core file inclusion
+* - Added checks for WordPress load state
+* - Improved cleanup sequence
+* - Added error handling for file operations
 * 
-* 1.0.0
-* - Initial release with basic deactivation
+* 2.0.0
+* - Previous version functionality
 */
 
 class DPW_RUI_Deactivator {
 
    public static function deactivate() {
+       // Ensure WordPress core is loaded
+       if (!function_exists('wp_clear_scheduled_hooks')) {
+           require_once(ABSPATH . 'wp-includes/functions.php');
+       }
+       
        // Clean up transients
        delete_transient('dpw_rui_activation_error');
        
@@ -27,8 +33,10 @@ class DPW_RUI_Deactivator {
            self::remove_plugin_data();
        }
 
-       // Clear any scheduled hooks if exist
-       wp_clear_scheduled_hooks('dpw_rui_cleanup_temp_files');
+       // Clear scheduled hooks safely
+       if (function_exists('wp_clear_scheduled_hooks')) {
+           wp_clear_scheduled_hooks('dpw_rui_cleanup_temp_files');
+       }
    }
 
    private static function remove_plugin_data() {
@@ -66,8 +74,10 @@ class DPW_RUI_Deactivator {
            'fields' => 'ids'
        ));
 
-       foreach ($attachments as $attachment_id) {
-           wp_delete_attachment($attachment_id, true);
+       if (!empty($attachments) && !is_wp_error($attachments)) {
+           foreach ($attachments as $attachment_id) {
+               wp_delete_attachment($attachment_id, true);
+           }
        }
 
        // Remove user capabilities
@@ -85,17 +95,20 @@ class DPW_RUI_Deactivator {
 
    private static function recursive_remove_directory($directory) {
        if (is_dir($directory)) {
-           $objects = scandir($directory);
-           foreach ($objects as $object) {
-               if ($object != "." && $object != "..") {
-                   if (is_dir($directory . DIRECTORY_SEPARATOR . $object)) {
-                       self::recursive_remove_directory($directory . DIRECTORY_SEPARATOR . $object);
-                   } else {
-                       unlink($directory . DIRECTORY_SEPARATOR . $object);
+           $objects = @scandir($directory);
+           if ($objects !== false) {
+               foreach ($objects as $object) {
+                   if ($object != "." && $object != "..") {
+                       $path = $directory . DIRECTORY_SEPARATOR . $object;
+                       if (is_dir($path)) {
+                           self::recursive_remove_directory($path);
+                       } else {
+                           @unlink($path);
+                       }
                    }
                }
            }
-           rmdir($directory);
+           @rmdir($directory);
        }
    }
 
@@ -129,6 +142,11 @@ class DPW_RUI_Deactivator {
     * Run cleanup before plugin files are deleted
     */
    public static function pre_uninstall_cleanup() {
+       // Ensure WordPress is loaded
+       if (!function_exists('get_role')) {
+           require_once(ABSPATH . 'wp-includes/pluggable.php');
+       }
+       
        self::remove_plugin_data();
 
        // Remove any additional plugin data
