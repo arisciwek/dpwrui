@@ -1,32 +1,34 @@
 <?php
 /**
  * Path: /wp-content/plugins/dpwrui/includes/class-dpw-rui-menu.php
- * Version: 1.0.3
+ * Version: 1.0.4
  * 
  * Changelog:
- * 1.0.3
- * - Fixed menu registration priority
- * - Force main menu to always show member list
- * - Added menu registration priority handling
- * - Fixed settings menu callback
- * - Added menu registration sequence fix
+ * 1.0.4
+ * - Fixed file path resolution
+ * - Added path existence checking
+ * - Improved error handling for missing files
+ * - Fixed form display logic
+ * - Proper view file loading
  * 
- * 1.0.2
+ * 1.0.3
  * - Previous version functionality
  */
 
 class DPW_RUI_Menu {
     private $plugin_name;
     private $anggota;
+    private $plugin_dir;
 
     public function __construct($plugin_name) {
         $this->plugin_name = $plugin_name;
+        $this->plugin_dir = plugin_dir_path(dirname(__FILE__)); // Get correct plugin directory path
         
         // Ensure anggota component is loaded
         global $dpw_rui_anggota;
         if (!isset($dpw_rui_anggota)) {
-            require_once DPW_RUI_PLUGIN_DIR . 'includes/class-dpw-rui-anggota.php';
-            require_once DPW_RUI_PLUGIN_DIR . 'includes/class-dpw-rui-validation.php';
+            require_once $this->plugin_dir . 'includes/class-dpw-rui-validation.php';
+            require_once $this->plugin_dir . 'includes/class-dpw-rui-anggota.php';
             $validation = new DPW_RUI_Validation();
             $dpw_rui_anggota = new DPW_RUI_Anggota($validation);
         }
@@ -40,28 +42,24 @@ class DPW_RUI_Menu {
     }
 
     public function add_admin_menu() {
-        // Unregister existing menus if any
-        remove_menu_page('dpw-rui');
-        remove_menu_page('dpw-rui-settings');
-        
         // Menu utama HARUS mengarah ke daftar anggota
         add_menu_page(
             'DPW RUI',
             'DPW RUI',
-            'dpw_rui_view_list',  // Changed permission level
-            'dpw-rui', // Force this to be member list
+            'dpw_rui_view_list',
+            'dpw-rui',
             array($this, 'display_anggota_page'),
             'dashicons-groups',
             6
         );
 
-        // Submenu Daftar Anggota (sama dengan menu utama)
+        // Submenu Daftar Anggota
         add_submenu_page(
             'dpw-rui',
             'Daftar Anggota',
             'Daftar Anggota',
-            'dpw_rui_view_list',  // Changed permission level
-            'dpw-rui', // Harus sama dengan menu utama
+            'dpw_rui_view_list',
+            'dpw-rui',
             array($this, 'display_anggota_page')
         );
 
@@ -76,12 +74,11 @@ class DPW_RUI_Menu {
             );
         }
 
-        // Settings harus ditambahkan terakhir
         if(current_user_can('manage_options')) {
             add_submenu_page(
                 'dpw-rui',
                 'Pengaturan',
-                'Pengaturan', 
+                'Pengaturan',
                 'manage_options',
                 'dpw-rui-settings',
                 array($this, 'display_settings_page')
@@ -110,7 +107,11 @@ class DPW_RUI_Menu {
             wp_die(__('Komponen anggota tidak tersedia. Silakan hubungi administrator.'));
         }
 
-        require_once DPW_RUI_PLUGIN_DIR . 'admin/views/anggota-form.php';
+        $view_file = $this->plugin_dir . 'admin/views/anggota-form.php';
+        if (!file_exists($view_file)) {
+            wp_die(sprintf(__('File view tidak ditemukan: %s'), $view_file));
+        }
+        require_once $view_file;
     }
 
     public function display_settings_page() {
@@ -118,8 +119,16 @@ class DPW_RUI_Menu {
             wp_die(__('Anda tidak memiliki akses ke halaman ini.'));
         }
         
-        require_once DPW_RUI_PLUGIN_DIR . 'admin/general.php';
+        require_once $this->plugin_dir . 'admin/general.php';
         $settings = DPW_RUI_General_Settings::get_instance();
         $settings->render_page();
+    }
+
+    private function load_view($view_name) {
+        $view_file = $this->plugin_dir . 'admin/views/' . $view_name . '.php';
+        if (!file_exists($view_file)) {
+            wp_die(sprintf(__('File view tidak ditemukan: %s'), $view_file));
+        }
+        require_once $view_file;
     }
 }
