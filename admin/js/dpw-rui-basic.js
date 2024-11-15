@@ -1,62 +1,76 @@
 /**
- * DPW RUI Basic Javascript
- * Version: 1.0.2
+ * Path: /wp-content/plugins/dpwrui/admin/js/dpw-rui-basic.js
+ * Version: 1.0.3
+ * Date: 2024-11-16
  * Support fungsi dasar CRUD tanpa ajax
+ * 
+ * Changelog:
+ * 1.0.3
+ * - Fixed form validation on submit
+ * - Added proper form handling for create/update
+ * - Fixed submit button state handling
+ * - Added loading indicator 
+ * - Improved error message display
  */
 
 (function($) {
     "use strict";
 
-    // Form validation tanpa bootstrap
+    // Form validation
     document.addEventListener('DOMContentLoaded', function() {
         var forms = document.getElementsByClassName('needs-validation');
         Array.prototype.filter.call(forms, function(form) {
             form.addEventListener('submit', function(event) {
+                var submitButton = form.querySelector('button[type="submit"]');
+                
                 if (form.checkValidity() === false) {
                     event.preventDefault();
                     event.stopPropagation();
                     
-                    // Tampilkan pesan error native
+                    // Show validation errors
                     var fields = form.querySelectorAll('input[required], textarea[required]');
                     fields.forEach(function(field) {
                         if (!field.validity.valid) {
                             field.classList.add('error');
+                            
+                            // Show error message if doesn't exist
+                            if (!field.nextElementSibling?.classList.contains('invalid-feedback')) {
+                                var feedback = document.createElement('div');
+                                feedback.className = 'invalid-feedback';
+                                feedback.textContent = field.validationMessage || 'Field ini wajib diisi';
+                                field.parentNode.insertBefore(feedback, field.nextSibling);
+                            }
                         }
                     });
+                } else {
+                    // Show loading state
+                    if (submitButton) {
+                        submitButton.disabled = true;
+                        submitButton.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Menyimpan...';
+                    }
                 }
+                
+                form.classList.add('was-validated');
             }, false);
         });
     });
 
-    // Konfirmasi hapus data
-    $('.delete-action').on('click', function(e) {
-        e.preventDefault();
-        if (confirm('Apakah Anda yakin ingin menghapus data ini?')) {
-            window.location.href = this.href;
-        }
+    // Remove error class on input
+    $('input[required], textarea[required]').on('input', function() {
+        $(this).removeClass('error');
+        $(this).next('.invalid-feedback').remove();
     });
-
-    // Pesan sukses auto hide
-    var successMessage = document.querySelector('.updated.notice-success');
-    if (successMessage) {
-        setTimeout(function() {
-            successMessage.style.display = 'none';
-        }, 3000);
-    }
 
     // Reset form
     $('.btn-reset').on('click', function(e) {
         e.preventDefault();
-        $(this).closest('form').trigger('reset');
-    });
-
-    // Nomor anggota preview
-    $('#nama_perusahaan').on('change', function() {
-        var date = new Date();
-        var prefix = String(date.getDate()).padStart(2,'0') + 
-                    String(date.getMonth() + 1).padStart(2,'0') + 
-                    date.getFullYear();
-        $('#nomor_preview').text(prefix + '-XXXXX');
+        if (confirm('Reset form? Semua perubahan akan hilang.')) {
+            var form = $(this).closest('form');
+            form.trigger('reset');
+            form.removeClass('was-validated');
+            form.find('.error').removeClass('error');
+            form.find('.invalid-feedback').remove();
+        }
     });
 
 })(jQuery);

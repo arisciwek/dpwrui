@@ -1,20 +1,17 @@
 <?php
 /**
- * Path: /wp-content/plugins/dpwrui/admin/views/anggota-detail.php
- * Version: 1.0.2
- * 
- * Changelog:
- * 1.0.2
- * - Changed layout to 2 columns in single row
- * - Left column (8) for member details
- * - Right column (4) for photos
- * - Prepared layout for additional cards below
- * 
- * 1.0.1 
- * - Added card for member photos
- * - Added link to photo management page
- * - Display main photo and additional photos
- */
+* Path: /wp-content/plugins/dpwrui/admin/views/anggota-detail.php
+* Version: 1.0.3
+* Timestamp: 2024-03-16 16:00:00
+* 
+* Changelog:
+* 1.0.3 (2024-03-16)
+* - Updated photo display to use new file system
+* - Removed WP attachment dependencies 
+* - Added direct file URL usage
+* - Improved photo layout and styling
+* - Added file info display
+*/
 
 $id = absint($_GET['id']);
 global $wpdb;
@@ -136,13 +133,21 @@ $photos = $wpdb->get_results(
                         <?php foreach($photos as $photo): ?>
                             <div class="mb-3">
                                 <div class="card">
-                                    <img src="<?php echo esc_url(wp_get_attachment_url($photo->attachment_id)); ?>" 
+                                    <img src="<?php echo esc_url($photo->file_url); ?>" 
                                          class="card-img-top"
                                          alt="<?php echo $photo->is_main ? 'Foto Utama' : 'Foto Tambahan'; ?>">
-                                    <div class="card-footer p-2 text-center">
-                                        <?php echo $photo->is_main ? 
-                                              '<span class="badge badge-primary">Foto Utama</span>' : 
-                                              '<span class="badge badge-secondary">Foto Tambahan</span>'; ?>
+                                    <div class="card-footer p-2">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <?php echo $photo->is_main ? 
+                                                      '<span class="badge badge-primary">Foto Utama</span>' : 
+                                                      '<span class="badge badge-secondary">Foto Tambahan</span>'; ?>
+                                            </div>
+                                            <small class="text-muted">
+                                                <?php echo human_filesize($photo->file_size); ?> &bull; 
+                                                <?php echo date('d/m/Y H:i', strtotime($photo->created_at)); ?>
+                                            </small>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -151,7 +156,6 @@ $photos = $wpdb->get_results(
                 </div>
             </div>
         </div>
-    </div>
 
     <!-- Tombol Aksi -->
     <div class="mb-4">
@@ -174,3 +178,12 @@ $photos = $wpdb->get_results(
     </div>
 
 </div>
+
+<?php
+// Helper function for file size formatting
+function human_filesize($bytes, $decimals = 2) {
+    $size = array('B','KB','MB','GB');
+    $factor = floor((strlen($bytes) - 1) / 3);
+    return sprintf("%.{$decimals}f", $bytes / pow(1024, $factor)) . ' ' . @$size[$factor];
+}
+?>

@@ -1,12 +1,15 @@
 <?php
 /**
  * Path: /wp-content/plugins/dpwrui/includes/class-dpw-rui-validation.php
- * Version: 1.0.0
- * 
+ * Version: 1.0.1
+ * Date: 2024-11-16
+ *
  * Changelog:
- * 1.0.0
- * - Extracted validation logic from class-dpw-rui.php
- * - Handles form validation and field sanitization
+ * 1.0.1
+ * - Fixed validate_required_fields to return WP_Error 
+ * - Fixed validate_field_length to return WP_Error
+ * - Fixed validation messaging
+ * - Added proper error returns instead of wp_die
  */
 
 class DPW_RUI_Validation {
@@ -36,23 +39,37 @@ class DPW_RUI_Validation {
     );
 
     public function validate_required_fields($data) {
+        $errors = array();
         foreach ($this->required_fields as $field => $label) {
             if (empty($data[$field])) {
-                wp_die(sprintf(__('%s wajib diisi.'), $label));
+                $errors[] = sprintf('%s wajib diisi.', $label);
             }
         }
+        
+        if (!empty($errors)) {
+            return new WP_Error('validation_failed', implode('<br>', $errors));
+        }
+        
+        return true;
     }
 
     public function validate_field_length($data) {
+        $errors = array();
         foreach ($data as $field => $value) {
             if (isset($this->field_lengths[$field]) && strlen($value) > $this->field_lengths[$field]) {
-                wp_die(sprintf(
-                    'Field %s terlalu panjang. Maksimal %d karakter.', 
-                    $field, 
+                $errors[] = sprintf(
+                    'Field %s terlalu panjang. Maksimal %d karakter.',
+                    $this->required_fields[$field] ?? $field,
                     $this->field_lengths[$field]
-                ));
+                );
             }
         }
+        
+        if (!empty($errors)) {
+            return new WP_Error('validation_failed', implode('<br>', $errors));
+        }
+        
+        return true;
     }
 
     public function truncate_fields($data) {
@@ -79,11 +96,5 @@ class DPW_RUI_Validation {
             'updated_at' => current_time('mysql'),
             'updated_by' => get_current_user_id()
         );
-    }
-
-    public function validate_nonce($nonce, $action) {
-        if (!isset($nonce) || !wp_verify_nonce($nonce, $action)) {
-            wp_die(__('Invalid nonce verification'));
-        }
     }
 }

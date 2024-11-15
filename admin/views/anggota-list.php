@@ -1,3 +1,18 @@
+<?php
+/**
+ * Path: /wp-content/plugins/dpwrui/admin/views/anggota-list.php
+ * Version: 1.0.2
+ * Date: 2024-11-16
+ * 
+ * Changelog:
+ * 1.0.2
+ * - Fixed success message display after create/update
+ * - Improved message handling
+ * - Added proper message timeout
+ * - Fixed message styling
+ */
+?>
+
 <div class="wrap">
     <h1 class="wp-heading-inline">Daftar Anggota DPW RUI</h1>
     
@@ -9,9 +24,24 @@
     <hr class="wp-header-end">
 
     <?php
-    if(isset($_GET['message']) && $_GET['message'] == '1'): ?>
-        <div class="updated notice is-dismissible">
-            <p>Data anggota berhasil disimpan.</p>
+    $message = isset($_GET['message']) ? intval($_GET['message']) : 0;
+    if($message): 
+        $message_text = '';
+        $message_class = 'notice-success';
+        
+        switch($message) {
+            case 1:
+                $message_text = 'Data anggota berhasil disimpan.';
+                break;
+            case 2:
+                $message_text = 'Data anggota berhasil diupdate.';
+                break;
+            default:
+                $message_text = 'Operasi berhasil dilakukan.';
+        }
+    ?>
+        <div class="notice <?php echo $message_class; ?> is-dismissible">
+            <p><?php echo esc_html($message_text); ?></p>
         </div>
     <?php endif; ?>
 
