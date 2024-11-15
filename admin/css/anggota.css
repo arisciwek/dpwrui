@@ -1,0 +1,103 @@
+/**
+ * Path: /wp-content/plugins/dpwrui/admin/css/anggota.css
+ * Version: 1.0.0
+ * Timestamp: 2024-11-16 17:30:00
+ */
+
+/* Form Layout */
+.dpw-rui-form .form-group {
+    margin-bottom: 1.5rem;
+}
+
+.dpw-rui-form .form-group label {
+    font-weight: 600;
+    color: #4e73df;
+    margin-bottom: 0.5rem;
+}
+
+.dpw-rui-form .form-control {
+    border-radius: 0.35rem;
+    border: 1px solid #d1d3e2;
+    padding: 0.75rem;
+    transition: all 0.2s ease-in-out;
+}
+
+.dpw-rui-form .form-control:focus {
+    border-color: #4e73df;
+    box-shadow: 0 0 0 0.2rem rgba(78, 115, 223, 0.25);
+}
+
+.dpw-rui-form .form-control.error {
+    border-color: #e74a3b;
+}
+
+.dpw-rui-form .invalid-feedback {
+    color: #e74a3b;
+    font-size: 80%;
+    margin-top: 0.25rem;
+}
+
+/* Required Field Indicator */
+.dpw-rui-form .required-indicator {
+    color: #e74a3b;
+    margin-left: 0.2rem;
+}
+
+/* Card Footer */
+.dpw-rui-form .card-footer {
+    background-color: #f8f9fc;
+    border-top: 1px solid #e3e6f0;
+    padding: 1.25rem;
+}
+
+.dpw-rui-form .btn {
+    padding: 0.75rem 1.5rem;
+    font-weight: 600;
+}
+
+.dpw-rui-form .btn-primary {
+    background-color: #4e73df;
+    border-color: #4e73df;
+}
+
+.dpw-rui-form .btn-primary:hover {
+    background-color: #2e59d9;
+    border-color: #2653d4;
+}
+
+.dpw-rui-form .btn-secondary {
+    margin-left: 0.5rem;
+}
+
+/* Form Help Text */
+.dpw-rui-form .form-text {
+    color: #858796;
+    font-size: 80%;
+    margin-top: 0.25rem;
+}
+
+/* Loading State */
+.dpw-rui-form .btn-loading {
+    position: relative;
+    pointer-events: none;
+}
+
+.dpw-rui-form .btn-loading:after {
+    content: '';
+    position: absolute;
+    width: 1rem;
+    height: 1rem;
+    border: 2px solid #fff;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: button-loading-spinner 1s linear infinite;
+}
+
+@keyframes button-loading-spinner {
+    from {
+        transform: rotate(0turn);
+    }
+    to {
+        transform: rotate(1turn);
+    }
+}

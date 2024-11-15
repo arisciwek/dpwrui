@@ -36,6 +36,13 @@ class DPW_RUI_Assets {
             $this->version,
             'all'
         );
+        
+        wp_enqueue_style(
+            'dpw-rui-anggota',
+            DPW_RUI_PLUGIN_URL . 'admin/css/anggota.css',
+            array(),
+            $this->version
+        );
 
         if (isset($_GET['action']) && $_GET['action'] == 'foto') {
             wp_enqueue_style(
