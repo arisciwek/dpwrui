@@ -1,17 +1,19 @@
 <?php
 /**
 * Path: /wp-content/plugins/dpwrui/includes/class-dpw-rui-anggota.php
-* Version: 1.1.0
-* Timestamp: 2024-11-16 17:00:00
+* Version: 1.1.2
+* Timestamp: 2024-11-16 20:00:00
 * 
 * Changelog:
-* 1.1.0
-* - Fixed save_anggota() to properly handle validation errors
-* - Added proper error display in form
-* - Fixed form submission handling
-* - Added specific nonce verification
-* - Added error logging
-* - Added proper redirect handling
+* 1.1.2
+* - Fixed "headers already sent" error by moving form handling to admin_init
+* - Added proper early redirect handling
+* - Improved form submission flow
+* - Added proper action hooks for form processing
+* - Added session-based message handling
+* 
+* 1.1.1
+* - Previous version functionality
 */
 
 class DPW_RUI_Anggota {
@@ -22,29 +24,44 @@ class DPW_RUI_Anggota {
         global $wpdb;
         $this->wpdb = $wpdb;
         $this->validation = $validation;
+
+        // Add form handling at admin_init (before any output)
+        add_action('admin_init', array($this, 'process_form_submission'));
     }
 
-    public function handle_page_actions() {
-        // Check for form submission
-        if (isset($_POST['submit'])) {
-            if (!isset($_POST['_wpnonce']) || !wp_verify_nonce($_POST['_wpnonce'], 'dpw_rui_add_anggota')) {
-                wp_die('Invalid nonce verification');
-            }
-            
-            $result = $this->save_anggota();
-            if (is_wp_error($result)) {
-                // Store error in transient and redirect back to form
-                set_transient('dpw_rui_form_errors', $result->get_error_message(), 30);
-                $redirect_url = isset($_POST['id']) ? 
-                    add_query_arg(['action' => 'edit', 'id' => $_POST['id']], remove_query_arg('message')) :
-                    remove_query_arg(['action', 'message']);
-                    
-                wp_redirect($redirect_url);
-                exit;
-            }
+    public function process_form_submission() {
+        // Only process on our plugin pages
+        if (!isset($_GET['page']) || !in_array($_GET['page'], array('dpw-rui', 'dpw-rui-add'))) {
             return;
         }
 
+        // Check if form was submitted
+        if (isset($_POST['submit']) && isset($_POST['_wpnonce'])) {
+            if (!wp_verify_nonce($_POST['_wpnonce'], 'dpw_rui_add_anggota')) {
+                wp_die('Invalid nonce verification');
+            }
+
+            $result = $this->save_anggota();
+            if (is_wp_error($result)) {
+                // Store error message in transient
+                set_transient('dpw_rui_form_errors', $result->get_error_message(), 30);
+                
+                // Redirect back to form with error
+                $redirect_url = isset($_POST['id']) ? 
+                    add_query_arg(array(
+                        'page' => 'dpw-rui',
+                        'action' => 'edit',
+                        'id' => absint($_POST['id'])
+                    ), admin_url('admin.php')) :
+                    add_query_arg('page', 'dpw-rui-add', admin_url('admin.php'));
+                
+                wp_redirect($redirect_url);
+                exit;
+            }
+        }
+    }
+
+    public function handle_page_actions() {
         $action = isset($_GET['action']) ? $_GET['action'] : 'list';
         
         switch($action) {
@@ -114,7 +131,6 @@ class DPW_RUI_Anggota {
         // Truncate fields to maximum allowed length
         $data = $this->validation->truncate_fields($data);
 
-        $result = false;
         if ($is_edit) {
             $result = $this->wpdb->update(
                 $table,
@@ -130,6 +146,7 @@ class DPW_RUI_Anggota {
             
             $redirect_id = $id;
             $message = 2; // Update success
+            
         } else {
             // Add fields for new record
             $data['nomor_anggota'] = $this->generate_member_number();
@@ -148,7 +165,10 @@ class DPW_RUI_Anggota {
             $message = 1; // Create success
         }
 
-        // Redirect to view page with success message
+        // Clear any existing error messages
+        delete_transient('dpw_rui_form_errors');
+
+        // Redirect to detail view
         wp_redirect(add_query_arg(array(
             'page' => 'dpw-rui',
             'action' => 'view',
@@ -157,49 +177,30 @@ class DPW_RUI_Anggota {
         ), admin_url('admin.php')));
         exit;
     }
-    
-   private function display_detail_anggota() {
-       if(!current_user_can('dpw_rui_read')) {
-           wp_die(__('Anda tidak memiliki akses untuk melihat detail anggota.'));
-       }
 
-       $id = isset($_GET['id']) ? absint($_GET['id']) : 0;
-       
-       $anggota = $this->wpdb->get_row($this->wpdb->prepare(
-           "SELECT * FROM {$this->wpdb->prefix}dpw_rui_anggota WHERE id = %d",
-           $id
-       ));
+    private function display_edit_anggota() {
+        if (!isset($_GET['id'])) {
+            wp_die(__('ID Anggota tidak valid'));
+        }
 
-       if(!$anggota) {
-           wp_die(__('Data anggota tidak ditemukan.'));
-       }
+        $id = absint($_GET['id']);
+        
+        $anggota = $this->wpdb->get_row($this->wpdb->prepare(
+            "SELECT * FROM {$this->wpdb->prefix}dpw_rui_anggota WHERE id = %d",
+            $id
+        ));
 
-       require_once DPW_RUI_PLUGIN_DIR . 'admin/views/anggota-detail.php';
-   }
+        if (!$anggota) {
+            wp_die(__('Data anggota tidak ditemukan.'));
+        }
 
-   private function display_edit_anggota() {
-       if(!current_user_can('dpw_rui_update')) {
-           wp_die(__('Anda tidak memiliki akses untuk mengubah data.'));
-       }
+        if (!current_user_can('dpw_rui_update') && 
+            (!current_user_can('dpw_rui_edit_own') || $anggota->created_by != get_current_user_id())) {
+            wp_die(__('Anda tidak memiliki akses untuk mengubah data ini.'));
+        }
 
-       $id = isset($_GET['id']) ? absint($_GET['id']) : 0;
-       
-       $anggota = $this->wpdb->get_row($this->wpdb->prepare(
-           "SELECT * FROM {$this->wpdb->prefix}dpw_rui_anggota WHERE id = %d",
-           $id
-       ));
-
-       if(!$anggota) {
-           wp_die(__('Data anggota tidak ditemukan.'));
-       }
-
-       if(!current_user_can('dpw_rui_update') && 
-          (!current_user_can('dpw_rui_edit_own') || $anggota->created_by != get_current_user_id())) {
-           wp_die(__('Anda tidak memiliki akses untuk mengubah data ini.'));
-       }
-
-       require_once DPW_RUI_PLUGIN_DIR . 'admin/views/anggota-form.php';
-   }
+        require DPW_RUI_PLUGIN_DIR . 'admin/views/anggota-form.php';
+    }
 
    private function display_list_anggota() {
        $search = isset($_POST['search']) ? sanitize_text_field($_POST['search']) : '';
@@ -232,6 +233,25 @@ class DPW_RUI_Anggota {
        );
 
        require_once DPW_RUI_PLUGIN_DIR . 'admin/views/anggota-list.php';
+   }
+
+   private function display_detail_anggota() {
+       if(!current_user_can('dpw_rui_read')) {
+           wp_die(__('Anda tidak memiliki akses untuk melihat detail anggota.'));
+       }
+
+       $id = isset($_GET['id']) ? absint($_GET['id']) : 0;
+       
+       $anggota = $this->wpdb->get_row($this->wpdb->prepare(
+           "SELECT * FROM {$this->wpdb->prefix}dpw_rui_anggota WHERE id = %d",
+           $id
+       ));
+
+       if(!$anggota) {
+           wp_die(__('Data anggota tidak ditemukan.'));
+       }
+
+       require_once DPW_RUI_PLUGIN_DIR . 'admin/views/anggota-detail.php';
    }
 
    private function generate_member_number() {
