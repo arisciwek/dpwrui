@@ -1,18 +1,15 @@
 <?php
 /**
- * Path: /wp-content/plugins/dpwrui/admin/views/anggota-form.php  
- * Version: 1.0.4
+ * Path: /wp-content/plugins/dpwrui/admin/views/anggota-form.php
+ * Version: 1.0.5
+ * Timestamp: 2024-11-16 17:00:00
  *
  * Changelog:
- * 1.0.4
- * - Fixed form action untuk proper redirect
- * - Added form_source hidden field
- * - Removed dynamic form action URL
- * - Fixed nonce field implementation
- * 
- * 1.0.3
- * - Fixed validation
- * - Added maxlength constraints
+ * 1.0.5
+ * - Added error message display from transient
+ * - Fixed form action URL
+ * - Improved validation feedback
+ * - Added proper nonce verification
  */
 
 // Cek jika mode edit
@@ -29,12 +26,20 @@ if($is_edit) {
         )
     );
 
+    if(!$anggota) {
+        wp_die(__('Data tidak ditemukan.'));
+    }
+
     // Cek permission
     if(!current_user_can('dpw_rui_update') && 
        (!current_user_can('dpw_rui_edit_own') || $anggota->created_by != get_current_user_id())) {
         wp_die(__('Anda tidak memiliki akses untuk mengubah data ini.'));
     }
 }
+
+// Get any error messages
+$error_message = get_transient('dpw_rui_form_errors');
+delete_transient('dpw_rui_form_errors');
 ?>
 
 <div class="wrap">
@@ -44,6 +49,12 @@ if($is_edit) {
     
     <hr class="wp-header-end">
 
+    <?php if ($error_message): ?>
+    <div class="notice notice-error is-dismissible">
+        <p><?php echo esc_html($error_message); ?></p>
+    </div>
+    <?php endif; ?>
+
     <div class="card shadow mb-4">
         <div class="card-header py-3">
             <h6 class="m-0 font-weight-bold text-primary">
@@ -51,7 +62,7 @@ if($is_edit) {
             </h6>
         </div>
         <div class="card-body">
-            <form method="post" action="" class="needs-validation" novalidate>
+            <form method="post" action="<?php echo admin_url('admin.php?page=dpw-rui' . ($is_edit ? '&action=edit&id=' . $id : '')); ?>" class="needs-validation" novalidate>
                 <?php wp_nonce_field('dpw_rui_add_anggota'); ?>
                 
                 <input type="hidden" name="form_source" value="<?php echo $is_edit ? 'edit' : 'add'; ?>">

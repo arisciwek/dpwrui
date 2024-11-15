@@ -1,28 +1,47 @@
 <?php
 /**
 * Path: /wp-content/plugins/dpwrui/includes/class-dpw-rui-anggota.php
-* Version: 1.0.0
+* Version: 1.1.0
+* Timestamp: 2024-11-16 17:00:00
 * 
 * Changelog:
-* 1.0.0
-* - Extracted member CRUD operations from class-dpw-rui.php
-* - Handles all member data operations
+* 1.1.0
+* - Fixed save_anggota() to properly handle validation errors
+* - Added proper error display in form
+* - Fixed form submission handling
+* - Added specific nonce verification
+* - Added error logging
+* - Added proper redirect handling
 */
 
 class DPW_RUI_Anggota {
-   private $wpdb;
-   private $validation;
+    private $wpdb;
+    private $validation;
 
-   public function __construct(DPW_RUI_Validation $validation) {
-       global $wpdb;
-       $this->wpdb = $wpdb;
-       $this->validation = $validation;
-   }
+    public function __construct(DPW_RUI_Validation $validation) {
+        global $wpdb;
+        $this->wpdb = $wpdb;
+        $this->validation = $validation;
+    }
 
     public function handle_page_actions() {
-        if (isset($_POST['submit']) && isset($_POST['_wpnonce'])) {
-            check_admin_referer('dpw_rui_add_anggota');
-            $this->save_anggota();
+        // Check for form submission
+        if (isset($_POST['submit'])) {
+            if (!isset($_POST['_wpnonce']) || !wp_verify_nonce($_POST['_wpnonce'], 'dpw_rui_add_anggota')) {
+                wp_die('Invalid nonce verification');
+            }
+            
+            $result = $this->save_anggota();
+            if (is_wp_error($result)) {
+                // Store error in transient and redirect back to form
+                set_transient('dpw_rui_form_errors', $result->get_error_message(), 30);
+                $redirect_url = isset($_POST['id']) ? 
+                    add_query_arg(['action' => 'edit', 'id' => $_POST['id']], remove_query_arg('message')) :
+                    remove_query_arg(['action', 'message']);
+                    
+                wp_redirect($redirect_url);
+                exit;
+            }
             return;
         }
 
@@ -64,27 +83,33 @@ class DPW_RUI_Anggota {
             ));
             
             if (!$existing) {
-                wp_die(__('Data tidak ditemukan.'));
+                return new WP_Error('not_found', __('Data tidak ditemukan.'));
             }
             
             if (!current_user_can('dpw_rui_update') && 
                 (!current_user_can('dpw_rui_edit_own') || $existing->created_by != get_current_user_id())) {
-                wp_die(__('Anda tidak memiliki akses untuk mengubah data ini.'));
+                return new WP_Error('permission_denied', __('Anda tidak memiliki akses untuk mengubah data ini.'));
             }
         } else {
             if (!current_user_can('dpw_rui_create')) {
-                wp_die(__('Anda tidak memiliki akses untuk menambah data.'));
+                return new WP_Error('permission_denied', __('Anda tidak memiliki akses untuk menambah data.'));
             }
         }
 
         // Validate required fields
-        $this->validation->validate_required_fields($_POST);
+        $validation_result = $this->validation->validate_required_fields($_POST);
+        if (is_wp_error($validation_result)) {
+            return $validation_result;
+        }
 
         // Prepare data
         $data = $this->validation->sanitize_form_data($_POST);
 
         // Validate field lengths
-        $this->validation->validate_field_length($data);
+        $length_validation = $this->validation->validate_field_length($data);
+        if (is_wp_error($length_validation)) {
+            return $length_validation;
+        }
         
         // Truncate fields to maximum allowed length
         $data = $this->validation->truncate_fields($data);
@@ -98,11 +123,9 @@ class DPW_RUI_Anggota {
             );
             
             if ($result === false) {
-                $error_message = "Gagal mengupdate data.\n";
-                $error_message .= "SQL Error: " . $this->wpdb->last_error . "\n";
-                $error_message .= "Data yang coba diupdate: " . print_r($data, true);
+                $error_message = "Gagal mengupdate data: " . $this->wpdb->last_error;
                 error_log($error_message);
-                wp_die($error_message);
+                return new WP_Error('update_failed', $error_message);
             }
             
             $redirect_id = $id;
@@ -116,19 +139,16 @@ class DPW_RUI_Anggota {
             $result = $this->wpdb->insert($table, $data);
             
             if ($result === false) {
-                $error_message = "Gagal menyimpan data baru.\n";
-                $error_message .= "SQL Error: " . $this->wpdb->last_error . "\n";
-                $error_message .= "Last Query: " . $this->wpdb->last_query . "\n";
-                $error_message .= "Data yang coba disimpan: " . print_r($data, true);
+                $error_message = "Gagal menyimpan data: " . $this->wpdb->last_error;
                 error_log($error_message);
-                wp_die($error_message);
+                return new WP_Error('insert_failed', $error_message);
             }
             
             $redirect_id = $this->wpdb->insert_id;
             $message = 1; // Create success
         }
 
-        // Redirect to view page
+        // Redirect to view page with success message
         wp_redirect(add_query_arg(array(
             'page' => 'dpw-rui',
             'action' => 'view',
@@ -137,7 +157,7 @@ class DPW_RUI_Anggota {
         ), admin_url('admin.php')));
         exit;
     }
-
+    
    private function display_detail_anggota() {
        if(!current_user_can('dpw_rui_read')) {
            wp_die(__('Anda tidak memiliki akses untuk melihat detail anggota.'));
