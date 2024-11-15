@@ -51,82 +51,70 @@ $photos = $wpdb->get_results(
     <!-- Main Content Section -->
     <div class="row">
         <!-- Left Column - Detail Anggota -->
-        <div class="col-lg-8">
-                    <div class="card col-lg-12 shadow mb-4">
-                        <div class="card-header py-3">
-                            <h6 class="m-0 font-weight-bold text-primary">Informasi Anggota</h6>
-                        </div>
-                        <div class="card-body">
-                            <div class="row">            
-                                <div class="col-lg-6">
-                                            <div class="table-responsive">
-                                                <table class="table table-striped">
-                                                    <tr>
-                                                        <th width="200">Nomor Anggota</th>
-                                                        <td><?php echo esc_html($anggota->nomor_anggota); ?></td>
-                                                    </tr>
-                                                    <tr>
-                                                        <th>Nama Perusahaan</th>
-                                                        <td><?php echo esc_html($anggota->nama_perusahaan); ?></td>
-                                                    </tr>
-                                                    <tr>
-                                                        <th>Pimpinan</th>
-                                                        <td><?php echo esc_html($anggota->pimpinan); ?></td>
-                                                    </tr>
-                                                    <tr>
-                                                        <th>Alamat</th>
-                                                        <td><?php echo nl2br(esc_html($anggota->alamat)); ?></td>
-                                                    </tr>
-                                                    <tr>
-                                                        <th>Kabupaten</th>
-                                                        <td><?php echo esc_html($anggota->kabupaten); ?></td>
-                                                    </tr>
-                                                    <tr>
-                                                        <th>Kode Pos</th>
-                                                        <td><?php echo esc_html($anggota->kode_pos); ?></td>
-                                                    </tr>
-                                                </table>
-                                            </div>
-                                </div>        
-                                <div class="col-lg-6">
-                                            <div class="table-responsive">
-                                                <table class="table table-striped">
-                                                    <tr>
-                                                        <th>Nomor Telpon</th>
-                                                        <td><?php echo esc_html($anggota->nomor_telpon); ?></td>
-                                                    </tr>
-                                                    <tr>
-                                                        <th>Bidang Usaha</th>
-                                                        <td><?php echo esc_html($anggota->bidang_usaha); ?></td>
-                                                    </tr>
-                                                    <tr>
-                                                        <th>Nomor AHU</th>
-                                                        <td><?php echo esc_html($anggota->nomor_ahu); ?></td>
-                                                    </tr>
-                                                    <tr>
-                                                        <th>Jabatan</th>
-                                                        <td><?php echo esc_html($anggota->jabatan); ?></td>
-                                                    </tr>
-                                                    <tr>
-                                                        <th>NPWP</th>
-                                                        <td><?php echo esc_html($anggota->npwp); ?></td>
-                                                    </tr>
-                                                    <tr>
-                                                        <th>Tanggal Daftar</th>
-                                                        <td><?php echo date('d/m/Y H:i', strtotime($anggota->created_at)); ?></td>
-                                                    </tr>
-                                                </table>
-                                            </div>
-                                </div>
-                            </div>
-
-                        </div>
+        <div class="col-lg-7">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Informasi Anggota</h6>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <tr>
+                                <th width="200">Nomor Anggota</th>
+                                <td><?php echo esc_html($anggota->nomor_anggota); ?></td>
+                            </tr>
+                            <tr>
+                                <th>Nama Perusahaan</th>
+                                <td><?php echo esc_html($anggota->nama_perusahaan); ?></td>
+                            </tr>
+                            <tr>
+                                <th>Pimpinan</th>
+                                <td><?php echo esc_html($anggota->pimpinan); ?></td>
+                            </tr>
+                            <tr>
+                                <th>Alamat</th>
+                                <td><?php echo nl2br(esc_html($anggota->alamat)); ?></td>
+                            </tr>
+                            <tr>
+                                <th>Kabupaten</th>
+                                <td><?php echo esc_html($anggota->kabupaten); ?></td>
+                            </tr>
+                            <tr>
+                                <th>Kode Pos</th>
+                                <td><?php echo esc_html($anggota->kode_pos); ?></td>
+                            </tr>
+                            <tr>
+                                <th>Nomor Telpon</th>
+                                <td><?php echo esc_html($anggota->nomor_telpon); ?></td>
+                            </tr>
+                            <tr>
+                                <th>Bidang Usaha</th>
+                                <td><?php echo esc_html($anggota->bidang_usaha); ?></td>
+                            </tr>
+                            <tr>
+                                <th>Nomor AHU</th>
+                                <td><?php echo esc_html($anggota->nomor_ahu); ?></td>
+                            </tr>
+                            <tr>
+                                <th>Jabatan</th>
+                                <td><?php echo esc_html($anggota->jabatan); ?></td>
+                            </tr>
+                            <tr>
+                                <th>NPWP</th>
+                                <td><?php echo esc_html($anggota->npwp); ?></td>
+                            </tr>
+                            <tr>
+                                <th>Tanggal Daftar</th>
+                                <td><?php echo date('d/m/Y H:i', strtotime($anggota->created_at)); ?></td>
+                            </tr>
+                        </table>
                     </div>
-
+                </div>
+            </div>
         </div>
 
         <!-- Right Column - Foto -->
-        <div class="col-lg-4">
+        <div class="col-lg-5">
             <div class="card shadow mb-4">
                 <div class="card-header py-3 d-flex justify-content-between align-items-center">
                     <h6 class="m-0 font-weight-bold text-primary">Foto Anggota</h6>

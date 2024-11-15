@@ -209,49 +209,43 @@ class DPW_RUI_General_Settings {
 
             <?php settings_errors('dpw_rui_messages'); ?>
 
-            <div class="container-fluid p-0">
-                <div class="row">
-                    <div class="col-12">
-                        <div class="card col-12 shadow mb-4">
-                            <div class="card-header">
-                                <h2 class="nav-tab-wrapper wp-clearfix">
-                                    <?php foreach ($this->tabs as $tab_key => $tab_label): ?>
-                                        <a href="<?php echo esc_url(add_query_arg(array(
-                                            'page' => 'dpw-rui-settings',
-                                            'tab' => $tab_key
-                                        ), admin_url('admin.php'))); ?>" 
-                                           class="nav-tab <?php echo $this->active_tab === $tab_key ? 'nav-tab-active' : ''; ?>">
-                                            <?php echo esc_html($tab_label); ?>
-                                        </a>
-                                    <?php endforeach; ?>
-                                </h2>
+            <div class="card shadow mb-4">
+                <div class="card-header">
+                    <h2 class="nav-tab-wrapper wp-clearfix">
+                        <?php foreach ($this->tabs as $tab_key => $tab_label): ?>
+                            <a href="<?php echo esc_url(add_query_arg(array(
+                                'page' => 'dpw-rui-settings',
+                                'tab' => $tab_key
+                            ), admin_url('admin.php'))); ?>" 
+                               class="nav-tab <?php echo $this->active_tab === $tab_key ? 'nav-tab-active' : ''; ?>">
+                                <?php echo esc_html($tab_label); ?>
+                            </a>
+                        <?php endforeach; ?>
+                    </h2>
+                </div>
+                <div class="card-body">
+                    <?php if ($this->active_tab === 'umum'): ?>
+                        <form method="post" action="options.php" class="needs-validation" novalidate>
+                            <?php
+                                settings_fields('dpw_rui_general_options');
+                                do_settings_sections('dpw_rui_general');
+                            ?>
+                            <div class="form-actions mt-4">
+                                <?php submit_button('Simpan Pengaturan', 'primary', 'submit', false); ?>
+                                <button type="reset" class="button button-secondary">Reset</button>
                             </div>
-                            <div class="card-body">
-                                <?php if ($this->active_tab === 'umum'): ?>
-                                    <form method="post" action="options.php" class="needs-validation" novalidate>
-                                        <?php
-                                            settings_fields('dpw_rui_general_options');
-                                            do_settings_sections('dpw_rui_general');
-                                        ?>
-                                        <div class="form-actions mt-4">
-                                            <?php submit_button('Simpan Pengaturan', 'primary', 'submit', false); ?>
-                                            <button type="reset" class="button button-secondary">Reset</button>
-                                        </div>
-                                    </form>
-                                <?php elseif ($this->active_tab === 'layanan'): 
-                                    require_once DPW_RUI_PLUGIN_DIR . 'admin/services.php';
-                                    $services = new DPW_RUI_Services_Settings($this->validation);
-                                    $services->render_page();
-                                ?>
-                                <?php elseif ($this->active_tab === 'roles'): 
-                                    require_once DPW_RUI_PLUGIN_DIR . 'admin/roles.php';
-                                    $roles = new DPW_RUI_Roles_Settings($this->validation);
-                                    $roles->render_page();
-                                ?>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                    </div>
+                        </form>
+                    <?php elseif ($this->active_tab === 'layanan'): 
+                        require_once DPW_RUI_PLUGIN_DIR . 'admin/services.php';
+                        $services = new DPW_RUI_Services_Settings($this->validation);
+                        $services->render_page();
+                    ?>
+                    <?php elseif ($this->active_tab === 'roles'): 
+                        require_once DPW_RUI_PLUGIN_DIR . 'admin/roles.php';
+                        $roles = new DPW_RUI_Roles_Settings($this->validation);
+                        $roles->render_page();
+                    ?>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
