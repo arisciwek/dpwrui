@@ -1,11 +1,54 @@
 <?php
 /**
  * Path: /wp-content/plugins/dpwrui/admin/views/anggota-form.php
- * Version: 1.0.6
- * Timestamp: 2024-11-16 17:30:00
+ * Version: 1.0.7
+ * Timestamp: 2024-11-16 18:30:00
+ *
+ * Changelog:
+ * 1.0.7
+ * - Fixed undefined $is_edit variable
+ * - Improved form action URL handling
+ * - Added proper page parameter checks
  */
 
-// [Previous PHP code remains the same...]
+// Determine if we're in edit mode
+$is_edit = isset($_GET['action']) && $_GET['action'] === 'edit';
+$current_page = isset($_GET['page']) ? $_GET['page'] : '';
+$anggota = null;
+
+if ($is_edit) {
+    if (!isset($_GET['id'])) {
+        wp_die(__('ID Anggota tidak valid'));
+    }
+    
+    global $wpdb;
+    $id = absint($_GET['id']);
+    $anggota = $wpdb->get_row(
+        $wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}dpw_rui_anggota WHERE id = %d",
+            $id
+        )
+    );
+
+    if (!$anggota) {
+        wp_die(__('Data tidak ditemukan.'));
+    }
+
+    // Cek permission
+    if (!current_user_can('dpw_rui_update') && 
+        (!current_user_can('dpw_rui_edit_own') || $anggota->created_by != get_current_user_id())) {
+        wp_die(__('Anda tidak memiliki akses untuk mengubah data ini.'));
+    }
+}
+
+// Get any error messages
+$error_message = get_transient('dpw_rui_form_errors');
+delete_transient('dpw_rui_form_errors');
+
+// Form action URL
+$form_action = $is_edit ? 
+    add_query_arg(['page' => 'dpw-rui', 'action' => 'edit', 'id' => $id], admin_url('admin.php')) :
+    add_query_arg('page', 'dpw-rui', admin_url('admin.php'));
 ?>
 
 <div class="wrap">
@@ -20,6 +63,7 @@
         <p><?php echo esc_html($error_message); ?></p>
     </div>
     <?php endif; ?>
+
     <div class="col-lg-12">
         <div class="card col-lg-10 ml-1 mr-1 shadow mb-4">
             <div class="card-header py-3">
@@ -27,9 +71,7 @@
                     <?php echo $is_edit ? 'Form Edit Anggota' : 'Form Tambah Anggota'; ?>
                 </h6>
             </div>
-            <form method="post" action="<?php echo admin_url('admin.php?page=dpw-rui' . ($is_edit ? '&action=edit&id=' . $id : '')); ?>" 
-                  class="dpw-rui-form needs-validation" novalidate>
-                
+            <form method="post" action="<?php echo esc_url($form_action); ?>" class="dpw-rui-form needs-validation" novalidate>                
                 <div class="card-body">
                     <?php wp_nonce_field('dpw_rui_add_anggota'); ?>
                     <input type="hidden" name="form_source" value="<?php echo $is_edit ? 'edit' : 'add'; ?>">
@@ -152,20 +194,21 @@
                     </div>
                 </div>
 
-                <div class="card-footer">
-                    <div class="d-flex justify-content-end">
-                        <button type="submit" name="submit" class="btn btn-primary">
-                            <i class="fas fa-save mr-1"></i>
-                            <?php echo $is_edit ? 'Update' : 'Simpan'; ?>
-                        </button>
-                        <a href="<?php echo admin_url('admin.php?page=dpw-rui'); ?>" 
-                           class="btn btn-secondary">
-                            <i class="fas fa-times mr-1"></i>
-                            Batal
-                        </a>
+                    <div class="card-footer">
+                        <div class="d-flex justify-content-end">
+                            <button type="submit" name="submit" class="btn btn-primary">
+                                <i class="fas fa-save mr-1"></i>
+                                <?php echo $is_edit ? 'Update' : 'Simpan'; ?>
+                            </button>
+                            <a href="<?php echo admin_url('admin.php?page=dpw-rui'); ?>" 
+                               class="btn btn-secondary">
+                                <i class="fas fa-times mr-1"></i>
+                                Batal
+                            </a>
+                        </div>
                     </div>
-                </div>
-            </form>
+                </form>
+            </div>
         </div>
     </div>
 
