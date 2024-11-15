@@ -1,585 +1,347 @@
 <?php
 /**
  * Path: /wp-content/plugins/dpwrui/includes/class-dpw-rui-foto.php
- * Version: 1.2.0
+ * Version: 2.2.0
  * 
  * Changelog:
- * 1.2.0
- * - Added dedicated validation methods for file upload
- * - Added comprehensive file handling methods
- * - Added photo data retrieval methods
- * - Added batch operation methods
- * - Added detailed error messaging
- * - Improved upload directory security
- * - Added support for template-based display
- * - Added proper error logging
- * - Added photo status management
- * - Fixed permission checking in file operations
+ * 2.2.0
+ * - Simplified file upload process
+ * - Fixed upload directory handling
+ * - Added proper mime type validation
+ * - Improved error messages
+ * - Fixed file path security issues
+ * - Added proper cleanup on delete
+ * - Fixed file size validation
  * 
- * 1.1.0 
+ * 2.1.0
  * - Previous version functionality
  */
 
 class DPW_RUI_Foto {
     private $wpdb;
-    private $errors = array();
-    //private $allowed_types = array('image/jpeg', 'image/png', 'image/gif');
-    private $allowed_types = array('image/jpeg', 'image/png');
+    private $allowed_types = array('image/jpeg', 'image/png', 'image/gif');
     private $max_size = 1887436; // 1.8MB in bytes
     private $upload_dir;
+    private $upload_url;
     
     public function __construct() {
         global $wpdb;
         $this->wpdb = $wpdb;
         
-        // Setup upload directory
-        $upload_info = wp_upload_dir();
-        $this->upload_dir = $upload_info['basedir'] . '/dpw-rui';
+        // Set upload paths
+        $wp_upload_dir = wp_upload_dir();
+        $this->upload_dir = $wp_upload_dir['basedir'] . '/dpw-rui';
+        $this->upload_url = $wp_upload_dir['baseurl'] . '/dpw-rui';
         
-        // Add hooks for upload handling
-        add_filter('upload_dir', array($this, 'custom_upload_dir'));
-        add_filter('ajax_query_attachments_args', array($this, 'filter_media_library'));
-        add_action('add_attachment', array($this, 'set_attachment_privacy'));
-        add_filter('wp_get_attachment_url', array($this, 'filter_attachment_url'), 10, 2);
+        $this->init_upload_dir();
     }
 
-    /**
-     * Get errors if any
-     */
-    public function get_errors() {
-        return $this->errors;
-    }
-
-    /**
-     * Check if there are any errors
-     */
-    public function has_errors() {
-        return !empty($this->errors);
-    }
-
-    /**
-     * Add error message
-     */
-    private function add_error($message) {
-        $this->errors[] = $message;
-        error_log('DPW RUI Foto Error: ' . $message);
-    }
-
-    /**
-     * Clear error messages
-     */
-    private function clear_errors() {
-        $this->errors = array();
-    }
-
-    /**
-     * Validate file before upload
-     * 
-     * @param array $file $_FILES array element
-     * @return bool True if valid, false if not
-     */
-    public function validate_upload($file) {
-        $this->clear_errors();
-        
-        // Check if file exists
-        if(empty($file['name'])) {
-            $this->add_error('Tidak ada file yang dipilih');
-            return false;
+    private function init_upload_dir() {
+        if (!file_exists($this->upload_dir)) {
+            wp_mkdir_p($this->upload_dir);
+            
+            // Create .htaccess
+            $htaccess = $this->upload_dir . '/.htaccess';
+            if (!file_exists($htaccess)) {
+                $content = "Options -Indexes\n";
+                $content .= "<Files *.php>\n";
+                $content .= "Order Deny,Allow\n";
+                $content .= "Deny from all\n";
+                $content .= "</Files>";
+                file_put_contents($htaccess, $content);
+            }
+            
+            // Create index.php
+            $index = $this->upload_dir . '/index.php';
+            if (!file_exists($index)) {
+                file_put_contents($index, '<?php // Silence is golden');
+            }
         }
-        
-        // Check file type
-        if(!in_array($file['type'], $this->allowed_types)) {
-            $this->add_error('Tipe file tidak didukung. Format yang diizinkan: JPG, PNG, GIF');
-            return false;
+    }
+
+    public function handle_upload($file, $anggota_id) {
+        // Validate file
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            return new WP_Error('upload_error', $this->get_upload_error_message($file['error']));
         }
-        
+
         // Check file size
-        if($file['size'] > $this->max_size) {
-            $this->add_error('Ukuran file terlalu besar. Maksimal 1.8 MB');
-            return false;
+        if ($file['size'] > $this->max_size) {
+            return new WP_Error('file_too_large', 'Ukuran file terlalu besar. Maksimal 1.8 MB');
         }
-        
-        // Check if it's really an image
-        $img_info = getimagesize($file['tmp_name']);
-        if($img_info === false) {
-            $this->add_error('File yang dipilih bukan file gambar yang valid');
-            return false;
+
+        // Validate mime type
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mime_type = finfo_file($finfo, $file['tmp_name']);
+        finfo_close($finfo);
+
+        if (!in_array($mime_type, $this->allowed_types)) {
+            return new WP_Error('invalid_type', 'Tipe file tidak didukung. Format yang diizinkan: JPG, PNG, GIF');
         }
+
+        // Create member directory
+        $member_dir = $this->upload_dir . '/' . $anggota_id;
+        if (!file_exists($member_dir)) {
+            wp_mkdir_p($member_dir);
+        }
+
+        // Generate safe filename
+        $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
+        $filename = sprintf(
+            '%s-%s.%s',
+            $anggota_id,
+            uniqid(),
+            strtolower($extension)
+        );
         
-        return true;
+        $filepath = $member_dir . '/' . $filename;
+
+        // Move uploaded file
+        if (!move_uploaded_file($file['tmp_name'], $filepath)) {
+            return new WP_Error('move_error', 'Gagal memindahkan file yang diupload');
+        }
+
+        // Add to database
+        $result = $this->wpdb->insert(
+            $this->wpdb->prefix . 'dpw_rui_anggota_foto',
+            array(
+                'anggota_id' => $anggota_id,
+                'filename' => $filename,
+                'is_main' => $this->count_photos($anggota_id) === 0 ? 1 : 0,
+                'created_at' => current_time('mysql'),
+                'created_by' => get_current_user_id()
+            ),
+            array('%d', '%s', '%d', '%s', '%d')
+        );
+
+        if (!$result) {
+            unlink($filepath);
+            return new WP_Error('db_error', 'Gagal menyimpan data foto');
+        }
+
+        return array(
+            'id' => $this->wpdb->insert_id,
+            'filename' => $filename,
+            'url' => $this->upload_url . '/' . $anggota_id . '/' . $filename
+        );
     }
 
-    /**
-     * Handle file upload process
-     * 
-     * @param string $file_key Key in $_FILES array
-     * @param int $anggota_id Member ID
-     * @return int|WP_Error Attachment ID if successful, WP_Error if not
-     */
-    public function handle_file_upload($file_key, $anggota_id) {
-        if(!isset($_FILES[$file_key])) {
-            return new WP_Error('no_file', 'Tidak ada file yang diupload');
-        }
-
-        // Validate upload
-        if(!$this->validate_upload($_FILES[$file_key])) {
-            return new WP_Error('validation_failed', implode(', ', $this->get_errors()));
-        }
-
-        // Add flag for custom upload directory
-        $_POST['is_dpw_rui_upload'] = true;
-        $_POST['anggota_id'] = $anggota_id;
-
-        require_once(ABSPATH . 'wp-admin/includes/image.php');
-        require_once(ABSPATH . 'wp-admin/includes/file.php');
-        require_once(ABSPATH . 'wp-admin/includes/media.php');
-
-        // Handle upload
-        $attachment_id = media_handle_upload($file_key, 0);
-        
-        if(is_wp_error($attachment_id)) {
-            $this->add_error($attachment_id->get_error_message());
-            return $attachment_id;
-        }
-
-        return $attachment_id;
-    }
-
-    /**
-     * Get photo data with additional info
-     * 
-     * @param int $photo_id Photo ID
-     * @return object|false Photo data object or false if not found
-     */
-    public function get_photo_data($photo_id) {
-        $photo = $this->wpdb->get_row($this->wpdb->prepare(
-            "SELECT p.*, a.attachment_url, a.attachment_path, a.attachment_metadata 
-             FROM {$this->wpdb->prefix}dpw_rui_anggota_foto p
-             LEFT JOIN {$this->wpdb->posts} a ON p.attachment_id = a.ID
-             WHERE p.id = %d",
-            $photo_id
-        ));
-
-        if($photo) {
-            $photo->url = wp_get_attachment_url($photo->attachment_id);
-            $photo->metadata = wp_get_attachment_metadata($photo->attachment_id);
-            return $photo;
-        }
-
-        return false;
-    }
-
-    /**
-     * Get all photos for a member with complete data
-     * 
-     * @param int $anggota_id Member ID
-     * @return array Array of photo objects
-     */
-    public function get_member_photos($anggota_id) {
+    public function get_photos($anggota_id) {
         return $this->wpdb->get_results($this->wpdb->prepare(
-            "SELECT p.*, a.guid as url 
-             FROM {$this->wpdb->prefix}dpw_rui_anggota_foto p
-             LEFT JOIN {$this->wpdb->posts} a ON p.attachment_id = a.ID
-             WHERE p.anggota_id = %d 
-             ORDER BY p.is_main DESC, p.id ASC",
+            "SELECT * FROM {$this->wpdb->prefix}dpw_rui_anggota_foto 
+             WHERE anggota_id = %d 
+             ORDER BY is_main DESC, id ASC",
             $anggota_id
         ));
     }
 
-    /**
-     * Custom upload directory per user
-     */
-    public function custom_upload_dir($uploads) {
-        if(!empty($_POST['is_dpw_rui_upload'])) {
-            $anggota_id = isset($_POST['anggota_id']) ? absint($_POST['anggota_id']) : 0;
-            $subdir = '/dpw-rui/' . get_current_user_id();
-            
-            if($anggota_id) {
-                $subdir .= '/' . $anggota_id;
-            }
-            
-            $uploads['subdir'] = $subdir;
-            $uploads['path'] = $uploads['basedir'] . $subdir;
-            $uploads['url'] = $uploads['baseurl'] . $subdir;
-        }
-        
-        return $uploads;
-    }
-
-    /**
-     * Add new photo
-     * 
-     * @param int $anggota_id Member ID
-     * @param int $attachment_id Attachment ID
-     * @param bool $is_main Whether this is the main photo
-     * @return bool True if successful, false if not
-     */
-    public function add_photo($anggota_id, $attachment_id, $is_main = 0) {
-        // Start transaction
-        $this->wpdb->query('START TRANSACTION');
-
-        try {
-            // If this is main photo, reset others
-            if($is_main) {
-                $this->wpdb->update(
-                    $this->wpdb->prefix . 'dpw_rui_anggota_foto',
-                    array('is_main' => 0),
-                    array('anggota_id' => $anggota_id),
-                    array('%d'),
-                    array('%d')
-                );
-            }
-
-            // Insert new photo
-            $result = $this->wpdb->insert(
-                $this->wpdb->prefix . 'dpw_rui_anggota_foto',
-                array(
-                    'anggota_id' => $anggota_id,
-                    'attachment_id' => $attachment_id,
-                    'is_main' => $is_main,
-                    'created_at' => current_time('mysql'),
-                    'created_by' => get_current_user_id()
-                ),
-                array('%d', '%d', '%d', '%s', '%d')
-            );
-
-            if($result === false) {
-                throw new Exception('Gagal menyimpan data foto');
-            }
-
-            $this->wpdb->query('COMMIT');
-            return true;
-
-        } catch (Exception $e) {
-            $this->wpdb->query('ROLLBACK');
-            $this->add_error($e->getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * Set photo as main
-     * 
-     * @param int $photo_id Photo ID
-     * @param int $anggota_id Member ID
-     * @return bool True if successful, false if not
-     */
-    public function set_main_photo($photo_id, $anggota_id) {
-        $this->wpdb->query('START TRANSACTION');
-
-        try {
-            // Reset all photos to non-main
-            $this->wpdb->update(
-                $this->wpdb->prefix . 'dpw_rui_anggota_foto',
-                array('is_main' => 0),
-                array('anggota_id' => $anggota_id),
-                array('%d'),
-                array('%d')
-            );
-            
-            // Set selected photo as main
-            $result = $this->wpdb->update(
-                $this->wpdb->prefix . 'dpw_rui_anggota_foto',
-                array('is_main' => 1),
-                array('id' => $photo_id),
-                array('%d'),
-                array('%d')
-            );
-
-            if($result === false) {
-                throw new Exception('Gagal mengatur foto utama');
-            }
-
-            $this->wpdb->query('COMMIT');
-            return true;
-
-        } catch (Exception $e) {
-            $this->wpdb->query('ROLLBACK');
-            $this->add_error($e->getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * Delete photo with proper cleanup
-     * 
-     * @param int $photo_id Photo ID
-     * @param int $anggota_id Member ID
-     * @return bool True if successful, false if not
-     */
-    public function delete_photo($photo_id, $anggota_id) {
-        $this->wpdb->query('START TRANSACTION');
-
-        try {
-            // Get photo data
-            $photo = $this->wpdb->get_row($this->wpdb->prepare(
-                "SELECT * FROM {$this->wpdb->prefix}dpw_rui_anggota_foto 
-                 WHERE id = %d AND anggota_id = %d",
-                $photo_id,
-                $anggota_id
-            ));
-
-            if(!$photo) {
-                throw new Exception('Foto tidak ditemukan');
-            }
-
-            // Delete attachment
-            if(!wp_delete_attachment($photo->attachment_id, true)) {
-                throw new Exception('Gagal menghapus file foto');
-            }
-
-            // Delete from custom table
-            $result = $this->wpdb->delete(
-                $this->wpdb->prefix . 'dpw_rui_anggota_foto',
-                array('id' => $photo_id),
-                array('%d')
-            );
-
-            if($result === false) {
-                throw new Exception('Gagal menghapus data foto');
-            }
-
-            // If this was main photo, set new main
-            if($photo->is_main) {
-                $new_main = $this->wpdb->get_row($this->wpdb->prepare(
-                    "SELECT id FROM {$this->wpdb->prefix}dpw_rui_anggota_foto 
-                     WHERE anggota_id = %d AND id != %d 
-                     ORDER BY id ASC LIMIT 1",
-                    $anggota_id,
-                    $photo_id
-                ));
-
-                if($new_main) {
-                    $this->set_main_photo($new_main->id, $anggota_id);
-                }
-            }
-
-            $this->wpdb->query('COMMIT');
-            return true;
-
-        } catch (Exception $e) {
-            $this->wpdb->query('ROLLBACK');
-            $this->add_error($e->getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * Get main photo for a member
-     * 
-     * @param int $anggota_id Member ID
-     * @return object|false Photo data or false if none
-     */
     public function get_main_photo($anggota_id) {
         return $this->wpdb->get_row($this->wpdb->prepare(
-            "SELECT p.*, a.guid as url 
-             FROM {$this->wpdb->prefix}dpw_rui_anggota_foto p
-             LEFT JOIN {$this->wpdb->posts} a ON p.attachment_id = a.ID
-             WHERE p.anggota_id = %d AND p.is_main = 1",
+            "SELECT * FROM {$this->wpdb->prefix}dpw_rui_anggota_foto 
+             WHERE anggota_id = %d AND is_main = 1 
+             LIMIT 1",
             $anggota_id
         ));
     }
 
-    /**
-     * Count total photos for a member
-     * 
-     * @param int $anggota_id Member ID
-     * @return int Number of photos
-     */
     public function count_photos($anggota_id) {
-        return $this->wpdb->get_var($this->wpdb->prepare(
+        return (int) $this->wpdb->get_var($this->wpdb->prepare(
             "SELECT COUNT(*) FROM {$this->wpdb->prefix}dpw_rui_anggota_foto 
              WHERE anggota_id = %d",
             $anggota_id
         ));
     }
 
-    /**
-     * Check if user can manage photo
-     * 
-     * @param int $anggota_id Member ID
-     * @return bool True if can manage, false if not
-     */
-    public function can_manage_photo($anggota_id) {
-        if(!$anggota_id) {
-            return false;
-        }
-
-        // Get member data
-        $anggota = $this->wpdb->get_row($this->wpdb->prepare(
-            "SELECT created_by FROM {$this->wpdb->prefix}dpw_rui_anggota WHERE id = %d",
+    public function delete_photo($photo_id, $anggota_id) {
+        $photo = $this->wpdb->get_row($this->wpdb->prepare(
+            "SELECT * FROM {$this->wpdb->prefix}dpw_rui_anggota_foto 
+             WHERE id = %d AND anggota_id = %d",
+            $photo_id,
             $anggota_id
         ));
 
-        if(!$anggota) {
+        if (!$photo) {
             return false;
         }
 
-        return current_user_can('dpw_rui_update') || 
-               (current_user_can('dpw_rui_edit_own') && 
-                $anggota->created_by == get_current_user_id());
-    }
-
-    /**
-     * Filter media library to show only user's own attachments
-     */
-    public function filter_media_library($query) {
-        // Skip for administrators
-        if(current_user_can('manage_options')) {
-            return $query;
+        // Delete file
+        $filepath = $this->upload_dir . '/' . $anggota_id . '/' . $photo->filename;
+        if (file_exists($filepath)) {
+            unlink($filepath);
         }
 
-        $user_id = get_current_user_id();
-        
-        if(!isset($query['author'])) {
-            $query['author'] = $user_id;
-        }
-        
-        return $query;
-    }
+        // Delete from database
+        $result = $this->wpdb->delete(
+            $this->wpdb->prefix . 'dpw_rui_anggota_foto',
+            array('id' => $photo_id),
+            array('%d')
+            );
 
-    /**
-     * Set attachment privacy meta
-     * 
-     * @param int $attachment_id Attachment ID
-     */
-    public function set_attachment_privacy($attachment_id) {
-        if(!empty($_POST['is_dpw_rui_upload'])) {
-            update_post_meta($attachment_id, '_dpw_rui_attachment', '1');
-            update_post_meta($attachment_id, '_dpw_rui_user', get_current_user_id());
-            
-            // Set attachment post author
-            wp_update_post(array(
-                'ID' => $attachment_id,
-                'post_author' => get_current_user_id()
-            ));
-        }
-    }
-
-    /**
-     * Filter attachment URL access
-     * 
-     * @param string $url URL of the attachment
-     * @param int $attachment_id Attachment ID
-     * @return string Filtered URL
-     */
-    public function filter_attachment_url($url, $attachment_id) {
-        // Skip if not our attachment
-        if(!get_post_meta($attachment_id, '_dpw_rui_attachment', true)) {
-            return $url;
-        }
-        
-        // Allow admin access
-        if(current_user_can('manage_options')) {
-            return $url;
-        }
-        
-        $attachment_user = get_post_meta($attachment_id, '_dpw_rui_user', true);
-        $current_user = get_current_user_id();
-        
-        // Check if user owns the attachment
-        if($attachment_user != $current_user) {
-            // Check if user can view the associated anggota
-            $anggota_id = $this->wpdb->get_var($this->wpdb->prepare(
-                "SELECT anggota_id FROM {$this->wpdb->prefix}dpw_rui_anggota_foto 
-                 WHERE attachment_id = %d",
-                $attachment_id
+        // If deleted photo was main photo, set another photo as main
+        if ($photo->is_main) {
+            $new_main = $this->wpdb->get_var($this->wpdb->prepare(
+                "SELECT id FROM {$this->wpdb->prefix}dpw_rui_anggota_foto 
+                 WHERE anggota_id = %d AND id != %d 
+                 ORDER BY created_at ASC LIMIT 1",
+                $anggota_id,
+                $photo_id
             ));
             
-            if($anggota_id) {
-                $anggota = $this->wpdb->get_row($this->wpdb->prepare(
-                    "SELECT created_by FROM {$this->wpdb->prefix}dpw_rui_anggota 
-                     WHERE id = %d",
-                    $anggota_id
-                ));
+            if ($new_main) {
+                $this->set_main_photo($new_main, $anggota_id);
+            }
+        }
+
+        return true;
+    }
+
+    public function set_main_photo($photo_id, $anggota_id) {
+        // First unset any existing main photo
+        $this->wpdb->update(
+            $this->wpdb->prefix . 'dpw_rui_anggota_foto',
+            array('is_main' => 0),
+            array('anggota_id' => $anggota_id),
+            array('%d'),
+            array('%d')
+        );
+
+        // Set the new main photo
+        return $this->wpdb->update(
+            $this->wpdb->prefix . 'dpw_rui_anggota_foto',
+            array('is_main' => 1),
+            array('id' => $photo_id, 'anggota_id' => $anggota_id),
+            array('%d'),
+            array('%d', '%d')
+        );
+    }
+
+    private function get_upload_error_message($error_code) {
+        switch ($error_code) {
+            case UPLOAD_ERR_INI_SIZE:
+                return 'Ukuran file melebihi batas maksimal upload_max_filesize di PHP.INI';
+            case UPLOAD_ERR_FORM_SIZE:
+                return 'Ukuran file melebihi batas maksimal yang ditentukan di form';
+            case UPLOAD_ERR_PARTIAL:
+                return 'File hanya terupload sebagian';
+            case UPLOAD_ERR_NO_FILE:
+                return 'Tidak ada file yang diupload';
+            case UPLOAD_ERR_NO_TMP_DIR:
+                return 'Folder temporary tidak ditemukan';
+            case UPLOAD_ERR_CANT_WRITE:
+                return 'Gagal menulis file ke disk';
+            case UPLOAD_ERR_EXTENSION:
+                return 'Upload dihentikan oleh ekstensi PHP';
+            default:
+                return 'Terjadi kesalahan yang tidak diketahui saat upload';
+        }
+    }
+
+    public function get_foto_url($foto) {
+        if (!$foto || !$foto->filename || !$foto->anggota_id) {
+            return '';
+        }
+        return $this->upload_url . '/' . $foto->anggota_id . '/' . $foto->filename;
+    }
+
+    public function get_foto_path($foto) {
+        if (!$foto || !$foto->filename || !$foto->anggota_id) {
+            return '';
+        }
+        
+        // Build safe path
+        $path = sprintf(
+            '%s/%d/%s',
+            rtrim($this->upload_dir, '/'),
+            absint($foto->anggota_id),
+            sanitize_file_name($foto->filename)
+        );
+        
+        // Validate path is within upload directory
+        $real_path = realpath($path);
+        if ($real_path === false || strpos($real_path, $this->upload_dir) !== 0) {
+            return '';
+        }
+        
+        return $path;
+    }
+
+    public function clean_old_temp_files() {
+        // Get all member directories
+        $dirs = glob($this->upload_dir . '/*', GLOB_ONLYDIR);
+        
+        foreach ($dirs as $dir) {
+            if (basename($dir) === '.' || basename($dir) === '..') {
+                continue;
+            }
+
+            // Get all files in directory
+            $files = glob($dir . '/*.*');
+            $now = time();
+            
+            foreach ($files as $file) {
+                // Skip if not a file
+                if (!is_file($file)) {
+                    continue;
+                }
                 
-                // Allow access if user has read permission or owns the anggota
-                if(!current_user_can('dpw_rui_read') && 
-                   (!current_user_can('dpw_rui_edit_own') || 
-                    $anggota->created_by != $current_user)) {
-                    return '';
-                }
-            } else {
-                return '';
-            }
-        }
-        
-        return $url;
-    }
-
-    /**
-     * Setup upload directory security
-     */
-    private function setup_upload_security() {
-        if(!is_dir($this->upload_dir)) {
-            wp_mkdir_p($this->upload_dir);
-        }
-
-        // Create .htaccess to protect upload directory
-        $htaccess = $this->upload_dir . '/.htaccess';
-        if(!file_exists($htaccess)) {
-            $htaccess_content = "Options -Indexes\n";
-            $htaccess_content .= "<Files *.php>\n";
-            $htaccess_content .= "Order Deny,Allow\n";
-            $htaccess_content .= "Deny from all\n";
-            $htaccess_content .= "</Files>";
-            
-            file_put_contents($htaccess, $htaccess_content);
-        }
-
-        // Create index.php to prevent directory listing
-        $index_file = $this->upload_dir . '/index.php';
-        if(!file_exists($index_file)) {
-            file_put_contents($index_file, '<?php // Silence is golden');
-        }
-    }
-
-    /**
-     * Clean up temporary files
-     */
-    public function cleanup_temp_files() {
-        // Get files older than 24 hours
-        $files = glob($this->upload_dir . '/temp/*');
-        $now = time();
-        
-        foreach($files as $file) {
-            if(is_file($file)) {
-                if($now - filemtime($file) >= 86400) {
-                    @unlink($file);
+                // Delete files older than 24 hours that aren't in database
+                $mtime = filemtime($file);
+                if (($now - $mtime) > 86400) {
+                    $filename = basename($file);
+                    $exists = $this->wpdb->get_var($this->wpdb->prepare(
+                        "SELECT COUNT(*) FROM {$this->wpdb->prefix}dpw_rui_anggota_foto 
+                         WHERE filename = %s",
+                        $filename
+                    ));
+                    
+                    if (!$exists) {
+                        unlink($file);
+                    }
                 }
             }
         }
     }
 
-    /**
-     * Get photo template path
-     * 
-     * @param string $template Template name
-     * @return string Full template path
-     */
-    public function get_template_path($template) {
-        $template_path = DPW_RUI_PLUGIN_DIR . 'admin/views/templates/foto/' . $template . '.php';
-        
-        if(!file_exists($template_path)) {
-            $this->add_error('Template tidak ditemukan: ' . $template);
-            return false;
+    public function validate_upload_directory() {
+        // Check if upload directory exists and is writable
+        if (!file_exists($this->upload_dir)) {
+            return new WP_Error('upload_dir_missing', 
+                'Direktori upload tidak ditemukan');
         }
-        
-        return $template_path;
+
+        if (!is_writable($this->upload_dir)) {
+            return new WP_Error('upload_dir_not_writable', 
+                'Direktori upload tidak dapat ditulis');
+        }
+
+        // Check for .htaccess
+        if (!file_exists($this->upload_dir . '/.htaccess')) {
+            return new WP_Error('htaccess_missing', 
+                'File .htaccess tidak ditemukan di direktori upload');
+        }
+
+        return true;
     }
 
-    /**
-     * Render photo template
-     * 
-     * @param string $template Template name
-     * @param array $data Data to pass to template
-     */
-    public function render_template($template, $data = array()) {
-        $template_path = $this->get_template_path($template);
+    public function check_disk_space() {
+        $free_space = disk_free_space($this->upload_dir);
         
-        if($template_path) {
-            extract($data);
-            include $template_path;
+        // Alert if less than 100MB free
+        if ($free_space < 104857600) {
+            return new WP_Error('low_disk_space', 
+                'Ruang disk hampir penuh. Silahkan hubungi administrator.');
         }
+
+        return true;
+    }
+
+    public function register_cleanup_schedule() {
+        if (!wp_next_scheduled('dpw_rui_cleanup_temp_files')) {
+            wp_schedule_event(time(), 'daily', 'dpw_rui_cleanup_temp_files');
+        }
+    }
+
+    public function deregister_cleanup_schedule() {
+        wp_clear_scheduled_hook('dpw_rui_cleanup_temp_files');
     }
 }

@@ -1,215 +1,182 @@
 <?php
 /**
- * Path: /wp-content/plugins/dpwrui/admin/views/anggota-form.php
- * Version: 1.0.6
+ * Path: /wp-content/plugins/dpwrui/admin/views/anggota-foto.php
+ * Version: 1.3.1
  * 
  * Changelog:
- * 1.0.6
- * - Improved layout with 2 columns
- * - Added card-footer with submit buttons
- * - Fixed form action and nonce
- * - Improved error display
- * - Fixed validation feedback
+ * 1.3.1
+ * - Menghapus semua CSS dan JavaScript internal
+ * - Memindahkan CSS ke foto.css
+ * - Memindahkan JavaScript ke foto.js
+ * - Tidak mengubah struktur HTML dan PHP
+ * - Memastikan class dan ID tetap sesuai dengan CSS & JS
  * 
- * 1.0.5
- * - Previous version functionality
+ * 1.3.0 
+ * - Previous functionality
  */
 
-// Cek jika mode edit
-$is_edit = isset($_GET['action']) && $_GET['action'] == 'edit';
-$anggota = null;
+if (!defined('ABSPATH')) {
+    exit;
+}
 
-if($is_edit) {
-    global $wpdb;
-    $id = absint($_GET['id']);
-    $anggota = $wpdb->get_row(
-        $wpdb->prepare(
-            "SELECT * FROM {$wpdb->prefix}dpw_rui_anggota WHERE id = %d",
-            $id
-        )
-    );
+// Initialize variables
+$errors = array();
+$notices = array();
+$success = false;
+$success_message = '';
 
-    // Cek permission
-    if(!current_user_can('dpw_rui_update') && 
-       (!current_user_can('dpw_rui_edit_own') || $anggota->created_by != get_current_user_id())) {
-        wp_die(__('Anda tidak memiliki akses untuk mengubah data ini.'));
+// Get anggota ID and validate
+$anggota_id = isset($_GET['id']) ? absint($_GET['id']) : 0;
+if (!$anggota_id) {
+    wp_die(__('ID Anggota tidak valid.'));
+}
+
+// Get DPW_RUI_Foto instance
+global $dpw_rui_foto;
+if (!isset($dpw_rui_foto)) {
+    require_once DPW_RUI_PLUGIN_DIR . 'includes/class-dpw-rui-foto.php';
+    $dpw_rui_foto = new DPW_RUI_Foto();
+}
+
+// Get anggota data
+global $wpdb;
+$anggota = $wpdb->get_row($wpdb->prepare(
+    "SELECT * FROM {$wpdb->prefix}dpw_rui_anggota WHERE id = %d",
+    $anggota_id
+));
+
+if (!$anggota) {
+    wp_die(__('Data anggota tidak ditemukan.'));
+}
+
+// Check permissions
+$can_manage = current_user_can('dpw_rui_update') || 
+              (current_user_can('dpw_rui_edit_own') && $anggota->created_by == get_current_user_id());
+
+if (!$can_manage) {
+    wp_die(__('Anda tidak memiliki akses untuk mengelola foto.'));
+}
+
+// Get existing photos
+$photos = $dpw_rui_foto->get_photos($anggota_id);
+$existing_count = count($photos);
+
+// Handle POST submission
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit'])) {
+    // Verify nonce
+    check_admin_referer('dpw_rui_upload_foto_' . $anggota_id);
+
+    // Handle file upload
+    if (isset($_FILES['foto']) && !empty($_FILES['foto']['name'])) {
+        try {
+            // Upload file
+            $upload_result = $dpw_rui_foto->handle_upload($_FILES['foto'], $anggota_id);
+            
+            if (is_wp_error($upload_result)) {
+                throw new Exception($upload_result->get_error_message());
+            }
+
+            $success = true;
+            $success_message = 'Foto berhasil diupload.';
+            
+            // Refresh photos list
+            $photos = $dpw_rui_foto->get_photos($anggota_id);
+            $existing_count = count($photos);
+            
+        } catch (Exception $e) {
+            $errors[] = $e->getMessage();
+        }
+    } else {
+        $errors[] = 'Tidak ada file yang dipilih.';
     }
 }
 
-// Get error messages if any
-$error_messages = get_settings_errors('dpw_rui_messages');
+// Handle GET actions (delete, set main)
+$action = isset($_GET['action']) ? $_GET['action'] : '';
+if ($action) {
+    switch($action) {
+        case 'delete':
+            if (isset($_GET['delete']) && check_admin_referer('dpw_rui_delete_foto_' . $_GET['delete'])) {
+                $photo_id = absint($_GET['delete']);
+                
+                if ($dpw_rui_foto->delete_photo($photo_id, $anggota_id)) {
+                    $success = true;
+                    $success_message = 'Foto berhasil dihapus.';
+                    
+                    // Refresh photos
+                    $photos = $dpw_rui_foto->get_photos($anggota_id);
+                    $existing_count = count($photos);
+                } else {
+                    $errors[] = 'Gagal menghapus foto.';
+                }
+            }
+            break;
+
+        case 'set_main':
+            if (isset($_GET['set_main']) && check_admin_referer('dpw_rui_set_main_foto_' . $_GET['set_main'])) {
+                $photo_id = absint($_GET['set_main']);
+                
+                if ($dpw_rui_foto->set_main_photo($photo_id, $anggota_id)) {
+                    $success = true;
+                    $success_message = 'Foto utama berhasil diubah.';
+                    
+                    // Refresh photos
+                    $photos = $dpw_rui_foto->get_photos($anggota_id);
+                } else {
+                    $errors[] = 'Gagal mengubah foto utama.';
+                }
+            }
+            break;
+    }
+}
 ?>
 
 <div class="wrap">
-    <h1 class="wp-heading-inline">
-        <?php echo $is_edit ? 'Edit Anggota' : 'Tambah Anggota Baru'; ?>
-    </h1>
-    
+    <h1 class="wp-heading-inline">Kelola Foto Anggota</h1>
     <hr class="wp-header-end">
 
-    <?php if (!empty($error_messages)): ?>
-        <?php foreach($error_messages as $error): ?>
-            <div class="notice notice-<?php echo $error['type']; ?> is-dismissible">
-                <p><?php echo $error['message']; ?></p>
-            </div>
-        <?php endforeach; ?>
-    <?php endif; ?>
+    <?php
+    // Display messages
+    $message_data = array(
+        'errors' => $errors,
+        'success' => $success,
+        'success_message' => $success_message,
+        'notices' => $notices
+    );
+    require_once DPW_RUI_PLUGIN_DIR . 'admin/views/templates/foto/message-display.php';
+    ?>
 
     <div class="row">
-        <div class="col-lg-12">
-            <div class="card shadow mb-4">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">
-                        <?php echo $is_edit ? 'Form Edit Anggota' : 'Form Tambah Anggota'; ?>
-                    </h6>
-                </div>
-                <form method="post" action="<?php echo admin_url('admin-post.php'); ?>" class="needs-validation" novalidate>
-                    <div class="card-body">
-                        <input type="hidden" name="action" value="dpw_rui_save_anggota">
-                        <?php wp_nonce_field('dpw_rui_save_anggota', 'dpw_rui_nonce'); ?>
-                        <input type="hidden" name="form_source" value="<?php echo $is_edit ? 'edit' : 'add'; ?>">
-                        <?php if($is_edit): ?>
-                            <input type="hidden" name="id" value="<?php echo $anggota->id; ?>">
-                        <?php endif; ?>
-
-                        <div class="row">
-                            <!-- Left Column -->
-                            <div class="col-lg-6">
-                                <div class="form-group">
-                                    <label>Nama Perusahaan <span class="text-danger">*</span></label>
-                                    <input type="text" 
-                                           name="nama_perusahaan" 
-                                           class="form-control" 
-                                           maxlength="100"
-                                           required
-                                           value="<?php echo $is_edit ? esc_attr($anggota->nama_perusahaan) : ''; ?>">
-                                    <div class="invalid-feedback">
-                                        Nama perusahaan wajib diisi
-                                    </div>
-                                </div>
-
-                                <div class="form-group">
-                                    <label>Pimpinan <span class="text-danger">*</span></label>
-                                    <input type="text" 
-                                           name="pimpinan" 
-                                           class="form-control" 
-                                           maxlength="100"
-                                           required
-                                           value="<?php echo $is_edit ? esc_attr($anggota->pimpinan) : ''; ?>">
-                                    <div class="invalid-feedback">
-                                        Nama pimpinan wajib diisi
-                                    </div>
-                                </div>
-
-                                <div class="form-group">
-                                    <label>Alamat <span class="text-danger">*</span></label>
-                                    <textarea name="alamat" 
-                                              class="form-control" 
-                                              rows="3" 
-                                              maxlength="255"
-                                              required><?php echo $is_edit ? esc_textarea($anggota->alamat) : ''; ?></textarea>
-                                    <div class="invalid-feedback">
-                                        Alamat wajib diisi
-                                    </div>
-                                </div>
-
-                                <div class="form-group">
-                                    <label>Kabupaten <span class="text-danger">*</span></label>
-                                    <input type="text" 
-                                           name="kabupaten" 
-                                           class="form-control" 
-                                           maxlength="50"
-                                           required
-                                           value="<?php echo $is_edit ? esc_attr($anggota->kabupaten) : ''; ?>">
-                                    <div class="invalid-feedback">
-                                        Kabupaten wajib diisi
-                                    </div>
-                                </div>
-
-                                <div class="form-group">
-                                    <label>Kode Pos</label>
-                                    <input type="text" 
-                                           name="kode_pos" 
-                                           class="form-control"
-                                           maxlength="10" 
-                                           value="<?php echo $is_edit ? esc_attr($anggota->kode_pos) : ''; ?>">
-                                </div>
-                            </div>
-
-                            <!-- Right Column -->
-                            <div class="col-lg-6">
-                                <div class="form-group">
-                                    <label>Nomor Telpon <span class="text-danger">*</span></label>
-                                    <input type="text" 
-                                           name="nomor_telpon" 
-                                           class="form-control" 
-                                           maxlength="20"
-                                           required
-                                           value="<?php echo $is_edit ? esc_attr($anggota->nomor_telpon) : ''; ?>">
-                                    <div class="invalid-feedback">
-                                        Nomor telpon wajib diisi
-                                    </div>
-                                </div>
-
-                                <div class="form-group">
-                                    <label>Bidang Usaha <span class="text-danger">*</span></label>
-                                    <input type="text" 
-                                           name="bidang_usaha" 
-                                           class="form-control" 
-                                           maxlength="100"
-                                           required
-                                           value="<?php echo $is_edit ? esc_attr($anggota->bidang_usaha) : ''; ?>">
-                                    <div class="invalid-feedback">
-                                        Bidang usaha wajib diisi
-                                    </div>
-                                </div>
-
-                                <div class="form-group">
-                                    <label>Nomor AHU <span class="text-danger">*</span></label>
-                                    <input type="text" 
-                                           name="nomor_ahu" 
-                                           class="form-control" 
-                                           maxlength="50"
-                                           required
-                                           value="<?php echo $is_edit ? esc_attr($anggota->nomor_ahu) : ''; ?>">
-                                    <div class="invalid-feedback">
-                                        Nomor AHU wajib diisi
-                                    </div>
-                                </div>
-
-                                <div class="form-group">
-                                    <label>Jabatan</label>
-                                    <input type="text" 
-                                           name="jabatan" 
-                                           class="form-control"
-                                           maxlength="50" 
-                                           value="<?php echo $is_edit ? esc_attr($anggota->jabatan) : ''; ?>">
-                                </div>
-
-                                <div class="form-group">
-                                    <label>NPWP <span class="text-danger">*</span></label>
-                                    <input type="text" 
-                                           name="npwp" 
-                                           class="form-control" 
-                                           maxlength="30"
-                                           required
-                                           value="<?php echo $is_edit ? esc_attr($anggota->npwp) : ''; ?>">
-                                    <div class="invalid-feedback">
-                                        NPWP wajib diisi
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="card-footer text-right">
-                        <button type="submit" name="submit" class="btn btn-primary">
-                            <?php echo $is_edit ? 'Update' : 'Simpan'; ?>
-                        </button>
-                        <a href="<?php echo admin_url('admin.php?page=dpw-rui'); ?>" 
-                           class="btn btn-secondary">Batal</a>
-                    </div>
-                </form>
-            </div>
+        <div class="col-lg-4">
+            <?php
+            // Display upload form
+            $upload_data = array(
+                'anggota_id' => $anggota_id,
+                'existing_count' => $existing_count,
+                'max_photos' => 4,
+                'main_photo' => $dpw_rui_foto->get_main_photo($anggota_id)
+            );
+            require_once DPW_RUI_PLUGIN_DIR . 'admin/views/templates/foto/upload-form.php';
+            ?>
         </div>
+
+        <div class="col-lg-8">
+            <?php
+            // Display photo grid
+            $grid_data = array(
+                'photos' => $photos,
+                'anggota_id' => $anggota_id,
+                'can_manage' => $can_manage
+            );
+            require_once DPW_RUI_PLUGIN_DIR . 'admin/views/templates/foto/grid-manage.php';
+            ?>
+        </div>
+    </div>
+
+    <div class="mt-4">
+        <a href="<?php echo admin_url('admin.php?page=dpw-rui&action=view&id=' . $anggota_id); ?>" 
+           class="btn btn-secondary">
+            <i class="fas fa-arrow-left mr-1"></i> Kembali ke Detail Anggota
+        </a>
     </div>
 </div>
