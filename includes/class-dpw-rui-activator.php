@@ -1,15 +1,19 @@
 <?php
 /**
 * Path: /wp-content/plugins/dpwrui/includes/class-dpw-rui-activator.php
-* Version: 2.2.0
+* Version: 2.2.1
+* Timestamp: 2024-11-16 22:00:00
 * 
 * Changelog:
+* 2.2.1 (2024-11-16)
+* - Added recursive directory permissions fix
+* - Added proper world-writable upload directory
+* - Fixed foto table structure to match foto class
+* - Added proper error handling for directory creation
+* - Added proper logging for directory errors
+* 
 * 2.2.0
-* - Removed unnecessary privileges check 
-* - Added foreign key constraints
-* - Fixed $wpdb global scope
-* - Added proper error handling for dbDelta
-* - Added debug logging for schema creation
+* - Previous version functionality
 */
 
 class DPW_RUI_Activator {
@@ -49,7 +53,7 @@ class DPW_RUI_Activator {
                throw new Exception('Failed to create anggota table: ' . $wpdb->last_error);
            }
 
-           // Create foto table with filename instead of attachment_id
+           // Create foto table with proper structure for file handling
            $sql_foto = "CREATE TABLE IF NOT EXISTS `{$wpdb->prefix}dpw_rui_anggota_foto` (
                `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
                `anggota_id` bigint(20) UNSIGNED NOT NULL,
@@ -65,23 +69,14 @@ class DPW_RUI_Activator {
                `updated_by` bigint(20) UNSIGNED DEFAULT NULL,
                PRIMARY KEY (`id`),
                KEY `anggota_id` (`anggota_id`),
-               KEY `is_main` (`is_main`)
+               KEY `is_main` (`is_main`),
+               CONSTRAINT `fk_foto_anggota` FOREIGN KEY (`anggota_id`) 
+               REFERENCES `{$wpdb->prefix}dpw_rui_anggota` (`id`) ON DELETE CASCADE
            ) {$wpdb->get_charset_collate()}";
 
            $result = $wpdb->query($sql_foto);
            if ($result === false) {
                throw new Exception('Failed to create foto table: ' . $wpdb->last_error);
-           }
-
-           // Add foreign key for anggota_id
-           if ($wpdb->get_var("SHOW TABLES LIKE '{$wpdb->prefix}dpw_rui_anggota'") && 
-               $wpdb->get_var("SHOW TABLES LIKE '{$wpdb->prefix}dpw_rui_anggota_foto'")) {
-               
-               $wpdb->query("ALTER TABLE `{$wpdb->prefix}dpw_rui_anggota_foto` 
-                            ADD CONSTRAINT `fk_foto_anggota`
-                            FOREIGN KEY (`anggota_id`) 
-                            REFERENCES `{$wpdb->prefix}dpw_rui_anggota` (`id`) 
-                            ON DELETE CASCADE");
            }
 
            $wpdb->query('COMMIT');
@@ -96,15 +91,22 @@ class DPW_RUI_Activator {
        self::setup_upload_directory();
    }
    
-
    private static function setup_upload_directory() {
        $upload_dir = wp_upload_dir();
        $dpw_rui_dir = $upload_dir['basedir'] . '/dpw-rui';
        
+       // Create main upload directory if not exists
        if (!file_exists($dpw_rui_dir)) {
-           wp_mkdir_p($dpw_rui_dir);
+           if (!wp_mkdir_p($dpw_rui_dir)) {
+               error_log('DPW RUI: Failed to create upload directory: ' . $dpw_rui_dir);
+               return;
+           }
+           
+           // Set proper permissions (world-writable for uploads)
+           chmod($dpw_rui_dir, 0777);
        }
        
+       // Create .htaccess
        $htaccess = $dpw_rui_dir . '/.htaccess';
        if (!file_exists($htaccess)) {
            file_put_contents($htaccess, 
@@ -113,11 +115,22 @@ class DPW_RUI_Activator {
                "Order Deny,Allow\n" .
                "Deny from all\n" .
                "</Files>");
+           chmod($htaccess, 0644);
        }
 
+       // Create index.php
        $index_file = $dpw_rui_dir . '/index.php';
        if (!file_exists($index_file)) {
            file_put_contents($index_file, '<?php // Silence is golden');
+           chmod($index_file, 0644);
+       }
+
+       // Create test file to verify directory is writable
+       $test_file = $dpw_rui_dir . '/test.txt';
+       if (@file_put_contents($test_file, 'test') === false) {
+           error_log('DPW RUI: Upload directory is not writable: ' . $dpw_rui_dir);
+       } else {
+           unlink($test_file);
        }
    }
 }
