@@ -1,19 +1,22 @@
 <?php
 /**
 * Path: /wp-content/plugins/dpwrui/includes/class-dpw-rui-anggota.php
-* Version: 1.1.2
-* Timestamp: 2024-11-16 20:00:00
+* Version: 1.1.3
+* Timestamp: 2024-11-16 21:00:00
 * 
 * Changelog:
+* 1.1.3
+* - Added foto action handling in handle_page_actions()
+* - Added display_foto_management() method
+* - Integrated foto management with existing permission system
+* - Maintained previous header and form handling fixes
+* 
 * 1.1.2
 * - Fixed "headers already sent" error by moving form handling to admin_init
 * - Added proper early redirect handling
 * - Improved form submission flow
 * - Added proper action hooks for form processing
 * - Added session-based message handling
-* 
-* 1.1.1
-* - Previous version functionality
 */
 
 class DPW_RUI_Anggota {
@@ -76,11 +79,39 @@ class DPW_RUI_Anggota {
             case 'delete':
                 $this->handle_delete_anggota();
                 break;
+            
+            case 'foto':
+                $this->display_foto_management();
+                break;
                 
             default:
                 $this->display_list_anggota();
                 break;
         }
+    }
+
+    private function display_foto_management() {
+        if (!isset($_GET['id'])) {
+            wp_die(__('ID Anggota tidak valid'));
+        }
+
+        $id = absint($_GET['id']);
+        
+        $anggota = $this->wpdb->get_row($this->wpdb->prepare(
+            "SELECT * FROM {$this->wpdb->prefix}dpw_rui_anggota WHERE id = %d",
+            $id
+        ));
+
+        if (!$anggota) {
+            wp_die(__('Data anggota tidak ditemukan.'));
+        }
+
+        if (!current_user_can('dpw_rui_update') && 
+            (!current_user_can('dpw_rui_edit_own') || $anggota->created_by != get_current_user_id())) {
+            wp_die(__('Anda tidak memiliki akses untuk mengelola foto.'));
+        }
+
+        require_once DPW_RUI_PLUGIN_DIR . 'admin/views/anggota-foto.php';
     }
 
     private function save_anggota() {
@@ -202,7 +233,7 @@ class DPW_RUI_Anggota {
         require DPW_RUI_PLUGIN_DIR . 'admin/views/anggota-form.php';
     }
 
-   private function display_list_anggota() {
+    private function display_list_anggota() {
        $search = isset($_POST['search']) ? sanitize_text_field($_POST['search']) : '';
        
        $paged = isset($_GET['paged']) ? absint($_GET['paged']) : 1;
@@ -233,9 +264,9 @@ class DPW_RUI_Anggota {
        );
 
        require_once DPW_RUI_PLUGIN_DIR . 'admin/views/anggota-list.php';
-   }
+    }
 
-   private function display_detail_anggota() {
+    private function display_detail_anggota() {
        if(!current_user_can('dpw_rui_read')) {
            wp_die(__('Anda tidak memiliki akses untuk melihat detail anggota.'));
        }
@@ -252,9 +283,9 @@ class DPW_RUI_Anggota {
        }
 
        require_once DPW_RUI_PLUGIN_DIR . 'admin/views/anggota-detail.php';
-   }
+    }
 
-   private function generate_member_number() {
+    private function generate_member_number() {
        $prefix = date('dmY');
        
        $last_number = $this->wpdb->get_var($this->wpdb->prepare(
@@ -266,5 +297,5 @@ class DPW_RUI_Anggota {
 
        $next_number = ($last_number ? intval($last_number) : 0) + 1;
        return $prefix . '-' . str_pad($next_number, 5, '0', STR_PAD_LEFT);
-   }
+    }
 }
